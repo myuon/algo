@@ -92,4 +92,21 @@ fun whenu :: "bool \<Rightarrow> unit io \<Rightarrow> unit io" where
 fun whenM :: "bool io \<Rightarrow> unit io \<Rightarrow> unit io" where
   "whenM cond f = cond \<bind> (\<lambda>b. if b then f else return ())"
 
+declare [[code abort: new_world alloc_world get_world put_world]]
+
+code_printing
+  type_constructor io \<rightharpoonup> (Haskell) "IO _"
+  | type_constructor ref \<rightharpoonup> (Haskell) "IORef _"
+  | type_constructor array \<rightharpoonup> (Haskell) "V.IOVector _"
+  | constant return \<rightharpoonup> (Haskell) "return"
+  | constant new \<rightharpoonup> (Haskell) "newIORef"
+  | constant get \<rightharpoonup> (Haskell) "readIORef"
+  | constant put \<rightharpoonup> (Haskell) "writeIORef"
+  | constant new_array \<rightharpoonup> (Haskell) "V.unsafeNew"
+  | constant read_array \<rightharpoonup> (Haskell) "unsafeRead"
+  | constant write_array \<rightharpoonup> (Haskell) "unsafeWrite"
+  | constant swap_array \<rightharpoonup> (Haskell) "unsafeSwap"
+  | constant forMu \<rightharpoonup> (Haskell) "forM_"
+  | constant whenu \<rightharpoonup> (Haskell) "when"
+
 end

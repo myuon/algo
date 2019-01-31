@@ -16,4 +16,7 @@ fun selectionSort :: "nat array \<Rightarrow> nat \<Rightarrow> unit io" where
     return ()
   })"
 
+export_code selectionSort in Haskell
+  module_name SelectionSort file "gen/"
+
 end
