@@ -1,18 +1,18 @@
 theory IO
-  imports Main "HOL-Library.State_Monad"
+  imports Main "HOL-Library.Countable" "HOL-Library.State_Monad"
 begin
 
-class repr =
-  fixes deserialize :: "typerep \<Rightarrow> 'a"
-  and serialize :: "'a \<Rightarrow> typerep"
+class repr = countable
 
-  assumes ser_de: "serialize \<circ> deserialize = id"
-  and de_ser: "deserialize \<circ> serialize = id"
+instance nat :: repr ..
+instance unit :: repr ..
+instance bool :: repr ..
+instance int :: repr ..
 
 type_synonym addr = nat
 
 record world =
-  memory :: "addr \<Rightarrow> typerep"
+  memory :: "addr \<Rightarrow> nat"
   used :: "addr"
 
 definition empty_world :: "world" where
@@ -21,12 +21,21 @@ definition empty_world :: "world" where
 datatype 'a ref = Ref addr
 datatype 'a array = Array addr
 
-datatype 'a io = IO "(world, 'a) state"
+datatype 'a io = IO (run_io: "(world, 'a) state")
+
+definition return :: "'a \<Rightarrow> 'a io" where
+  "return x = IO (State_Monad.return x)"
+
+definition bind :: "'a io \<Rightarrow> ('a \<Rightarrow> 'b io) \<Rightarrow> 'b io" where
+  "bind x f = IO (run_io x \<bind> (run_io \<circ> f))"
+
+adhoc_overloading
+  Monad_Syntax.bind IO.bind
 
 fun new_world :: "'a::repr \<Rightarrow> world \<Rightarrow> 'a ref \<times> world" where
   "new_world val w = (
     let newAddr = used w in
-    ( Ref newAddr, \<lparr> memory = \<lambda>i. if i = newAddr then serialize val else memory w i, used = newAddr + 1 \<rparr> )
+    ( Ref newAddr, \<lparr> memory = \<lambda>i. if i = newAddr then to_nat val else memory w i, used = newAddr + 1 \<rparr> )
   )"
 
 fun alloc_world :: "nat \<Rightarrow> world \<Rightarrow> 'a array \<times> world" where
@@ -36,12 +45,12 @@ fun alloc_world :: "nat \<Rightarrow> world \<Rightarrow> 'a array \<times> worl
 
 fun get_world :: "addr \<Rightarrow> world \<Rightarrow> 'a::repr \<times> world" where
   "get_world addr w = (
-    ( deserialize (memory w addr), w )
+    ( from_nat (memory w addr), w )
   )"
 
 fun put_world :: "addr \<Rightarrow> 'a::repr \<Rightarrow> world \<Rightarrow> unit \<times> world" where
   "put_world addr val w = (
-    ( (), \<lparr> memory = \<lambda>i. if i = addr then serialize val else memory w i, used = used w \<rparr> )
+    ( (), \<lparr> memory = \<lambda>i. if i = addr then to_nat val else memory w i, used = used w \<rparr> )
   )"
 
 fun new :: "'a::repr \<Rightarrow> 'a ref io" where
@@ -62,5 +71,25 @@ fun read_array :: "'a array \<Rightarrow> nat \<Rightarrow> 'a::repr io" where
 fun write_array :: "'a array \<Rightarrow> nat \<Rightarrow> 'a::repr \<Rightarrow> unit io" where
   "write_array (Array arr) i val = IO (State (put_world (arr + i) val))"
 
-end
+fun swap_array :: "'a::repr array \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> unit io" where
+  "swap_array arr i j = do {
+    valI \<leftarrow> read_array arr i;
+    valJ \<leftarrow> read_array arr j;
+    write_array arr j valI;
+    write_array arr i valJ;
+    return ()
+  }"
 
+(* Monadic Combinators *)
+
+fun forMu :: "'a list \<Rightarrow> ('a \<Rightarrow> unit io) \<Rightarrow> unit io" where
+  "forMu [] f = return ()"
+| "forMu (x#xs) f = f x \<bind> (\<lambda>_. forMu xs f)"
+
+fun whenu :: "bool \<Rightarrow> unit io \<Rightarrow> unit io" where
+  "whenu cond f = (if cond then f else return ())"
+
+fun whenM :: "bool io \<Rightarrow> unit io \<Rightarrow> unit io" where
+  "whenM cond f = cond \<bind> (\<lambda>b. if b then f else return ())"
+
+end
