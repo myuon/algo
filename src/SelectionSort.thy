@@ -1,23 +1,22 @@
 theory SelectionSort
-  imports Main IO "HOL-Library.Monad_Syntax"
+  imports Main IO IOArray
 begin
 
-fun selection_sort :: "nat array \<Rightarrow> nat \<Rightarrow> unit io" where
+fun selection_sort :: "nat io_array \<Rightarrow> nat \<Rightarrow> unit io" where
   "selection_sort arr n = forMu (map nat [1..int n]) (\<lambda>i. do {
-    minRef \<leftarrow> new i;
+    min_ref \<leftarrow> ref i;
     forMu (map nat [int i+1..int n]) (\<lambda>j. do {
       valJ \<leftarrow> read_array arr j;
-      min \<leftarrow> get minRef;
-      valMin \<leftarrow> read_array arr min;
-      whenu (valJ < valMin) (put minRef j)
+      m \<leftarrow> ! min_ref;
+      valMin \<leftarrow> read_array arr m;
+      whenu (valJ < valMin) (min_ref := j)
     });
-    min \<leftarrow> get minRef;
-    swap_array arr i min;
+    m \<leftarrow> ! min_ref;
+    swap_array arr i m;
     return ()
   })"
 
 export_code selection_sort in Haskell
   module_name SelectionSort file "gen/"
-
 
 end

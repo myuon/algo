@@ -1,6 +1,6 @@
 {-# LANGUAGE EmptyDataDecls, RankNTypes, ScopedTypeVariables #-}
 
-module SelectionSort(Int, Nat, selection_sort) where {
+module SelectionSort(Int, Nat, Io, Ref, Io_array, selection_sort) where {
 
 import Prelude ((==), (/=), (<), (<=), (>=), (>), (+), (-), (*), (/), (**),
   (>>=), (>>), (=<<), (&&), (||), (^), (^^), (.), ($), ($!), (++), (!!), Eq,
@@ -8,6 +8,7 @@ import Prelude ((==), (/=), (<), (<=), (>=), (>), (+), (-), (*), (/), (**),
   zip, null, takeWhile, dropWhile, all, any, Integer, negate, abs, divMod,
   String, Bool(True, False), Maybe(Nothing, Just));
 import qualified Prelude;
+import qualified Heap;
 
 data Num = One | Bit0 Num | Bit1 Num;
 
@@ -202,37 +203,49 @@ instance Zero_neq_one Int where {
 instance Semiring_1 Int where {
 };
 
+data Typerepa = Typerep String [Typerepa];
+
 data Nat = Zero_nat | Suc Nat;
+
+data Itself a = Type;
+
+typerep_nat :: Itself Nat -> Typerepa;
+typerep_nat t = Typerep "Nat.nat" [];
+
+class Typerep a where {
+  typerep :: Itself a -> Typerepa;
+};
 
 class Countable a where {
 };
 
-class (Countable a) => Repr a where {
+class (Countable a, Typerep a) => Heapa a where {
 };
 
 instance Countable Nat where {
 };
 
-instance Repr Nat where {
+instance Typerep Nat where {
+  typerep = typerep_nat;
 };
 
-newtype State a b = State (a -> (b, a));
+instance Heapa Nat where {
+};
 
-data World_ext a = World_ext (Nat -> Nat) Nat a;
+newtype Io a = IO (Heap.ST Heap.RealWorld a);
 
-run_state :: forall a b. State a b -> a -> (b, a);
-run_state (State x) = x;
+newtype Ref a = Ref Nat;
 
-binda :: forall a b c. State a b -> (b -> State a c) -> State a c;
-binda x f = State (\ s -> (case run_state x s of {
-                            (a, b) -> run_state (f a) b;
-                          }));
+data Io_array a = IOArray (Ref a) Nat;
 
-run_io :: forall a. IO a -> State (World_ext ()) a;
+ref :: forall a. a -> Io (Ref a);
+ref _ = error "IO.ref";
+
+run_io :: forall a. Io a -> Heap.ST Heap.RealWorld a;
 run_io (IO x) = x;
 
-bind :: forall a b. IO a -> (a -> IO b) -> IO b;
-bind x f = IO (binda (run_io x) (run_io . f));
+bind :: forall a b. Io a -> (a -> Io b) -> Io b;
+bind x f = IO (run_io x >>= run_io . f);
 
 plus_nat :: Nat -> Nat -> Nat;
 plus_nat (Suc m) n = plus_nat m (Suc n);
@@ -254,6 +267,22 @@ nat :: Int -> Nat;
 nat (Pos k) = nat_of_num k;
 nat Zero_int = Zero_nat;
 nat (Neg k) = Zero_nat;
+
+returna :: forall a. a -> Io a;
+returna x = IO (return x);
+
+forMu :: forall a. [a] -> (a -> Io ()) -> Io ();
+forMu [] f = returna ();
+forMu (x : xs) f = bind (f x) (\ _ -> forMu xs f);
+
+whenu :: Bool -> Io () -> Io ();
+whenu cond f = (if cond then f else returna ());
+
+lookup :: forall a. Ref a -> Io a;
+lookup _ = error "IO.lookup";
+
+update :: forall a. Ref a -> a -> Io ();
+update _ _ = error "IO.update";
 
 less_num :: Num -> Num -> Bool;
 less_num (Bit1 m) (Bit0 n) = less_num m n;
@@ -291,6 +320,25 @@ upto_aux i j js =
 upto :: Int -> Int -> [Int];
 upto i j = upto_aux i j [];
 
+addr_of_ref :: forall a. Ref a -> Nat;
+addr_of_ref (Ref x) = x;
+
+read_array :: forall a. (Heapa a) => Io_array a -> Nat -> Io a;
+read_array (IOArray arr uu) i = lookup (Ref (plus_nat (addr_of_ref arr) i));
+
+write_array :: forall a. (Heapa a) => Io_array a -> Nat -> a -> Io ();
+write_array (IOArray arr uu) i val =
+  update (Ref (plus_nat (addr_of_ref arr) i)) val;
+
+swap_array :: forall a. (Heapa a) => Io_array a -> Nat -> Nat -> Io ();
+swap_array arr i j =
+  bind (read_array arr i)
+    (\ valI ->
+      bind (read_array arr j)
+        (\ valJ ->
+          bind (write_array arr j valI)
+            (\ _ -> bind (write_array arr i valJ) (\ _ -> returna ()))));
+
 less_nat :: Nat -> Nat -> Bool;
 less_nat m (Suc n) = less_eq_nat m n;
 less_nat n Zero_nat = False;
@@ -306,24 +354,24 @@ of_nat_aux inc (Suc n) i = of_nat_aux inc n (inc i);
 of_nat :: forall a. (Semiring_1 a) => Nat -> a;
 of_nat n = of_nat_aux (\ i -> plus i one) n zero;
 
-selection_sort :: V.IOVector Nat -> Nat -> IO ();
+selection_sort :: Io_array Nat -> Nat -> Io ();
 selection_sort arr n =
-  forM(map nat (upto one_int (of_nat n)))
+  forMu (map nat (upto one_int (of_nat n)))
     (\ i ->
-      bind (newIORef i)
-        (\ minRef ->
-          bind (forM(map nat (upto (plus_int (of_nat i) one_int) (of_nat n)))
+      bind (ref i)
+        (\ min_ref ->
+          bind (forMu (map nat (upto (plus_int (of_nat i) one_int) (of_nat n)))
                  (\ j ->
-                   bind (unsafeRead arr j)
+                   bind (read_array arr j)
                      (\ valJ ->
-                       bind (readIORef minRef)
-                         (\ min ->
-                           bind (unsafeRead arr min)
+                       bind (lookup min_ref)
+                         (\ m ->
+                           bind (read_array arr m)
                              (\ valMin ->
-                               when (less_nat valJ valMin)
-                                 (writeIORef minRef j))))))
+                               whenu (less_nat valJ valMin)
+                                 (update min_ref j))))))
             (\ _ ->
-              bind (readIORef minRef)
-                (\ min -> bind (unsafeSwap arr i min) (\ _ -> return ())))));
+              bind (lookup min_ref)
+                (\ m -> bind (swap_array arr i m) (\ _ -> returna ())))));
 
 }

@@ -1,33 +1,14 @@
 theory IO
-  imports Main "HOL-Library.Countable" "HOL-Library.Monad_Syntax"
+  imports Main "HOL-Imperative_HOL.Array"
 begin
                               
-class repr = countable + typerep
-
-instance nat :: repr ..
-instance unit :: repr ..
-instance bool :: repr ..
-instance int :: repr ..
-
-type_synonym addr = nat
-
-record world =
-  memory :: "addr \<Rightarrow> typerep"
-  used :: "addr"
-
-definition empty_world :: "world" where
-  "empty_world = \<lparr> memory = (\<lambda>_. undefined), used = 0 \<rparr>"
-
-datatype 'a ref = Ref addr
-datatype 'a array = Array addr nat
-
-datatype 'a io = IO (run_io: "world \<Rightarrow> 'a \<times> world")
+datatype 'a io = IO (run_io: "'a Heap")
 
 definition return :: "'a \<Rightarrow> 'a io" where
-  "return x = IO (\<lambda>w. (x,w))"
+  "return x = IO (Heap_Monad.return x)"
 
 definition bind :: "'a io \<Rightarrow> ('a \<Rightarrow> 'b io) \<Rightarrow> 'b io" where
-  "bind x f = IO (\<lambda>w. case run_io x w of (y,w') \<Rightarrow> run_io (f y) w')"
+  "bind x f = IO (Heap_Monad.bind (run_io x) (run_io \<circ> f))"
 
 adhoc_overloading
   Monad_Syntax.bind IO.bind
@@ -39,66 +20,55 @@ lemma monad_left_id[simp]: "return a \<bind> f = f a"
   done
 
 lemma monad_right_id[simp]: "m \<bind> return = m"
-  apply (simp add: return_def bind_def)
+  apply (simp add: return_def bind_def comp_def)
   done
 
 lemma monad_assoc[simp]:
-  fixes m :: "'a io"
+  fixes m :: "'a::heap io"
   shows "(m \<bind> f) \<bind> g = m \<bind> (\<lambda>x. f x \<bind> g)"
-  unfolding bind_def by (auto split: prod.splits)
+  unfolding bind_def comp_def by (auto split: prod.splits)
 
-fun new_world :: "'a::repr \<Rightarrow> world \<Rightarrow> 'a ref \<times> world" where
-  "new_world val w = (
-    let newAddr = used w in
-    ( Ref newAddr, \<lparr> memory = \<lambda>i. if i = newAddr then typerep_of nat else memory w i, used = newAddr + 1 \<rparr> )
-  )"
+definition present :: "heap \<Rightarrow> 'a::heap ref \<Rightarrow> bool" where
+  "present h r \<longleftrightarrow> addr_of_ref r < lim h"
 
-fun alloc_world :: "nat \<Rightarrow> world \<Rightarrow> 'a array \<times> world" where
-  "alloc_world s w = (
-    ( Array (used w) s, \<lparr> memory = memory w, used = used w + s \<rparr> )
-  )"
+definition get :: "heap \<Rightarrow> 'a::heap ref \<Rightarrow> 'a" where
+  "get h = from_nat \<circ> refs h TYPEREP('a) \<circ> addr_of_ref"
 
-fun get_world :: "addr \<Rightarrow> world \<Rightarrow> 'a::repr \<times> world" where
-  "get_world addr w = (
-    ( TYPEREP('a) (from_nat (memory w addr)), w )
-  )"
+definition set :: "'a::heap ref \<Rightarrow> 'a \<Rightarrow> heap \<Rightarrow> heap" where
+  "set r x = refs_update
+    (\<lambda>h. h(TYPEREP('a) := ((h (TYPEREP('a))) (addr_of_ref r := to_nat x))))"
 
-fun put_world :: "addr \<Rightarrow> 'a::repr \<Rightarrow> world \<Rightarrow> unit \<times> world" where
-  "put_world addr val w = (
-    ( (), \<lparr> memory = \<lambda>i. if i = addr then to_nat val else memory w i, used = used w \<rparr> )
-  )"
+definition alloc :: "nat \<Rightarrow> heap \<Rightarrow> 'a::heap ref \<times> heap" where
+  "alloc s h = (let
+     l = lim h;
+     r = Ref l
+   in (r, (h\<lparr>lim := l + s\<rparr>)))"
 
-fun new :: "'a::repr \<Rightarrow> 'a ref io" where
-  "new val = IO (new_world val)"
+definition new :: "'a \<Rightarrow> heap \<Rightarrow> 'a::heap ref \<times> heap" where
+  "new v h = (case alloc 1 h of (aref,h') \<Rightarrow> (aref, set aref v h'))"
 
-fun get :: "'a ref \<Rightarrow> 'a::repr io" where
-  "get (Ref ref) = IO (get_world ref)"
+definition noteq :: "'a::heap ref \<Rightarrow> 'b::heap ref \<Rightarrow> bool" (infix "=!=" 70) where
+  "r =!= s \<longleftrightarrow> TYPEREP('a) \<noteq> TYPEREP('b) \<or> addr_of_ref r \<noteq> addr_of_ref s"
 
-fun put :: "'a ref \<Rightarrow> 'a::repr \<Rightarrow> unit io" where
-  "put (Ref ref) val = IO (put_world ref val)"
+definition allocate :: "nat \<Rightarrow> 'a::heap ref io" where
+  "allocate s = IO (Heap_Monad.heap (alloc s))"
 
-fun new_array :: "nat \<Rightarrow> ('a array) io" where
-  "new_array s = IO (alloc_world s)"
+definition ref :: "'a::heap \<Rightarrow> 'a ref io" where
+  [code del]: "ref v = IO (Heap_Monad.heap (new v))"
 
-fun read_array :: "'a array \<Rightarrow> nat \<Rightarrow> 'a::repr io" where
-  "read_array (Array arr _) i = IO (get_world (arr + i))"
+definition lookup :: "'a::heap ref \<Rightarrow> 'a io" ("!_" 61) where
+  [code del]: "lookup r = IO (Heap_Monad.tap (\<lambda>h. get h r))"
 
-fun write_array :: "'a array \<Rightarrow> nat \<Rightarrow> 'a::repr \<Rightarrow> unit io" where
-  "write_array (Array arr _) i val = IO (put_world (arr + i) val)"
+definition update :: "'a ref \<Rightarrow> 'a::heap \<Rightarrow> unit io" ("_ := _" 62) where
+  [code del]: "update r v = IO (Heap_Monad.heap (\<lambda>h. ((), set r v h)))"
 
-fun swap_array :: "'a::repr array \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> unit io" where
-  "swap_array arr i j = do {
-    valI \<leftarrow> read_array arr i;
-    valJ \<leftarrow> read_array arr j;
-    write_array arr j valI;
-    write_array arr i valJ;
-    return ()
-  }"
-
-(* IO Operations *)
-lemma get_set[simp]: "get ref \<bind> put ref = return ()"
-  apply (cases ref)
-  unfolding bind_def return_def apply simp
+definition modify :: "('a::heap \<Rightarrow> 'a) \<Rightarrow> 'a ref \<Rightarrow> 'a io" where
+  "modify f r = do {
+     x \<leftarrow> ! r;
+     let y = f x;
+     r := y;
+     return y
+   }"
 
 (* Monadic Combinators *)
 
@@ -106,7 +76,7 @@ fun forMu :: "'a list \<Rightarrow> ('a \<Rightarrow> unit io) \<Rightarrow> uni
   "forMu [] f = return ()"
 | "forMu (x#xs) f = f x \<bind> (\<lambda>_. forMu xs f)"
 
-fun mapM :: "('a \<Rightarrow> 'b io) \<Rightarrow> 'a list \<Rightarrow> 'b list io" where
+fun mapM :: "('a \<Rightarrow> 'b::heap io) \<Rightarrow> 'a list \<Rightarrow> 'b list io" where
   "mapM f [] = return []"
 | "mapM f (x#xs) = f x \<bind> (\<lambda>r. mapM f xs \<bind> (\<lambda>rs. return (r#rs)))"
 
@@ -116,15 +86,14 @@ fun whenu :: "bool \<Rightarrow> unit io \<Rightarrow> unit io" where
 fun whenM :: "bool io \<Rightarrow> unit io \<Rightarrow> unit io" where
   "whenM cond f = cond \<bind> (\<lambda>b. if b then f else return ())"
 
-declare [[code abort: new_world alloc_world get_world put_world]]
-
+(*
 code_printing
   type_constructor io \<rightharpoonup> (Haskell) "IO _"
   | type_constructor ref \<rightharpoonup> (Haskell) "IORef _"
   | type_constructor array \<rightharpoonup> (Haskell) "V.IOVector _"
   | constant return \<rightharpoonup> (Haskell) "return"
-  | constant new \<rightharpoonup> (Haskell) "newIORef"
-  | constant get \<rightharpoonup> (Haskell) "readIORef"
+  | constant ref \<rightharpoonup> (Haskell) "newIORef"
+  | constant look \<rightharpoonup> (Haskell) "readIORef"
   | constant put \<rightharpoonup> (Haskell) "writeIORef"
   | constant new_array \<rightharpoonup> (Haskell) "V.unsafeNew"
   | constant read_array \<rightharpoonup> (Haskell) "unsafeRead"
@@ -133,5 +102,6 @@ code_printing
   | constant forMu \<rightharpoonup> (Haskell) "forM_"
   | constant mapM \<rightharpoonup> (Haskell) "mapM_"
   | constant whenu \<rightharpoonup> (Haskell) "when"
+*)
 
 end
