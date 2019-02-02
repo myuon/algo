@@ -2,8 +2,8 @@ theory SelectionSort
   imports Main IO "HOL-Library.Monad_Syntax"
 begin
 
-fun selectionSort :: "nat array \<Rightarrow> nat \<Rightarrow> unit io" where
-  "selectionSort arr n = forMu (map nat [1..int n]) (\<lambda>i. do {
+fun selection_sort :: "nat array \<Rightarrow> nat \<Rightarrow> unit io" where
+  "selection_sort arr n = forMu (map nat [1..int n]) (\<lambda>i. do {
     minRef \<leftarrow> new i;
     forMu (map nat [int i+1..int n]) (\<lambda>j. do {
       valJ \<leftarrow> read_array arr j;
@@ -16,7 +16,8 @@ fun selectionSort :: "nat array \<Rightarrow> nat \<Rightarrow> unit io" where
     return ()
   })"
 
-export_code selectionSort in Haskell
+export_code selection_sort in Haskell
   module_name SelectionSort file "gen/"
+
 
 end

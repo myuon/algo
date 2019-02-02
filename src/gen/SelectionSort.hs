@@ -1,6 +1,6 @@
 {-# LANGUAGE EmptyDataDecls, RankNTypes, ScopedTypeVariables #-}
 
-module SelectionSort(Int, Nat, selectionSort) where {
+module SelectionSort(Int, Nat, selection_sort) where {
 
 import Prelude ((==), (/=), (<), (<=), (>=), (>), (+), (-), (*), (/), (**),
   (>>=), (>>), (=<<), (&&), (||), (^), (^^), (.), ($), ($!), (++), (!!), Eq,
@@ -306,8 +306,8 @@ of_nat_aux inc (Suc n) i = of_nat_aux inc n (inc i);
 of_nat :: forall a. (Semiring_1 a) => Nat -> a;
 of_nat n = of_nat_aux (\ i -> plus i one) n zero;
 
-selectionSort :: V.IOVector Nat -> Nat -> IO ();
-selectionSort arr n =
+selection_sort :: V.IOVector Nat -> Nat -> IO ();
+selection_sort arr n =
   forM(map nat (upto one_int (of_nat n)))
     (\ i ->
       bind (newIORef i)
