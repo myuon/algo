@@ -4,10 +4,13 @@ begin
 
 datatype 'a io_array = IOArray "'a ref" nat
 
+primrec get_size :: "'a io_array \<Rightarrow> nat" where
+  "get_size (IOArray _ s) = s"
+
 term "allocate"
 
 fun new_array :: "nat \<Rightarrow> 'a::heap io_array io" where
-  "new_array s = allocate s \<bind> (\<lambda>r. return (IOArray r s))"
+  "new_array s = alloc s \<bind> (\<lambda>r. return (IOArray r s))"
 
 fun read_array :: "'a io_array \<Rightarrow> nat \<Rightarrow> 'a::heap io" where
   "read_array (IOArray arr _) i = lookup (Ref (addr_of_ref arr + i))"
@@ -34,8 +37,5 @@ fun write_list_as_array :: "'a::heap list \<Rightarrow> 'a io_array io" where
 
 fun read_list_from_array :: "'a::heap io_array \<Rightarrow> 'a list io" where
   "read_list_from_array (IOArray arr n) = mapM (\<lambda>i. read_array (IOArray arr n) i) (map nat [0..int n])"
-
-lemma list_write_read_id: "write_list_as_array xs \<bind> (\<lambda>arr. read_list_from_array arr) = return xs"
-  sorry
 
 end

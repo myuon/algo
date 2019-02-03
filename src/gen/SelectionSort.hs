@@ -323,6 +323,9 @@ upto i j = upto_aux i j [];
 addr_of_ref :: forall a. Ref a -> Nat;
 addr_of_ref (Ref x) = x;
 
+get_size :: forall a. Io_array a -> Nat;
+get_size (IOArray uu s) = s;
+
 read_array :: forall a. (Heapa a) => Io_array a -> Nat -> Io a;
 read_array (IOArray arr uu) i = lookup (Ref (plus_nat (addr_of_ref arr) i));
 
@@ -354,24 +357,27 @@ of_nat_aux inc (Suc n) i = of_nat_aux inc n (inc i);
 of_nat :: forall a. (Semiring_1 a) => Nat -> a;
 of_nat n = of_nat_aux (\ i -> plus i one) n zero;
 
-selection_sort :: Io_array Nat -> Nat -> Io ();
-selection_sort arr n =
-  forMu (map nat (upto one_int (of_nat n)))
-    (\ i ->
-      bind (ref i)
-        (\ min_ref ->
-          bind (forMu (map nat (upto (plus_int (of_nat i) one_int) (of_nat n)))
-                 (\ j ->
-                   bind (read_array arr j)
-                     (\ valJ ->
-                       bind (lookup min_ref)
-                         (\ m ->
-                           bind (read_array arr m)
-                             (\ valMin ->
-                               whenu (less_nat valJ valMin)
-                                 (update min_ref j))))))
-            (\ _ ->
-              bind (lookup min_ref)
-                (\ m -> bind (swap_array arr i m) (\ _ -> returna ())))));
+selection_sort :: Io_array Nat -> Io ();
+selection_sort arr =
+  let {
+    n = get_size arr;
+  } in forMu (map nat (upto one_int (of_nat n)))
+         (\ i ->
+           bind (ref i)
+             (\ min_ref ->
+               bind (forMu
+                      (map nat (upto (plus_int (of_nat i) one_int) (of_nat n)))
+                      (\ j ->
+                        bind (read_array arr j)
+                          (\ valJ ->
+                            bind (lookup min_ref)
+                              (\ m ->
+                                bind (read_array arr m)
+                                  (\ valMin ->
+                                    whenu (less_nat valJ valMin)
+                                      (update min_ref j))))))
+                 (\ _ ->
+                   bind (lookup min_ref)
+                     (\ m -> bind (swap_array arr i m) (\ _ -> returna ())))));
 
 }
