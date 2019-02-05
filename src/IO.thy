@@ -1,7 +1,7 @@
 theory IO
   imports Main "HOL-Imperative_HOL.Array"
 begin
-                              
+
 datatype 'a io = IO (run_io: "'a Heap")
 
 definition return :: "'a \<Rightarrow> 'a io" where
@@ -38,23 +38,26 @@ definition set_heap :: "'a::heap ref \<Rightarrow> 'a \<Rightarrow> heap \<Right
   "set_heap r x = refs_update
     (\<lambda>h. h(TYPEREP('a) := ((h (TYPEREP('a))) (addr_of_ref r := to_nat x))))"
 
-definition alloc_heap :: "nat \<Rightarrow> heap \<Rightarrow> 'a::heap ref \<times> heap" where
-  "alloc_heap s h = (let
+definition alloc_heap_array :: "nat \<Rightarrow> heap \<Rightarrow> 'a::heap array \<times> heap" where
+  "alloc_heap_array s h = (let
      l = lim h;
-     r = Ref l
+     r = Array l
    in (r, (h\<lparr>lim := l + s\<rparr>)))"
 
-definition new :: "'a \<Rightarrow> heap \<Rightarrow> 'a::heap ref \<times> heap" where
-  "new v h = (case alloc_heap 1 h of (aref,h') \<Rightarrow> (aref, set_heap aref v h'))"
+definition alloc_heap :: "'a \<Rightarrow> heap \<Rightarrow> 'a::heap ref \<times> heap" where
+  "alloc_heap v h = (let
+     l = lim h;
+     r = Ref l
+   in (r, set_heap r v (h\<lparr>lim := l + 1\<rparr>)))"
 
 definition noteq :: "'a::heap ref \<Rightarrow> 'b::heap ref \<Rightarrow> bool" (infix "=!=" 70) where
   "r =!= s \<longleftrightarrow> TYPEREP('a) \<noteq> TYPEREP('b) \<or> addr_of_ref r \<noteq> addr_of_ref s"
 
-definition alloc :: "nat \<Rightarrow> 'a::heap ref io" where
-  "alloc s = IO (Heap_Monad.heap (alloc_heap s))"
+definition alloc :: "nat \<Rightarrow> 'a::heap array io" where
+  "alloc s = IO (Heap_Monad.heap (alloc_heap_array s))"
 
 definition ref :: "'a::heap \<Rightarrow> 'a ref io" where
-  [code del]: "ref v = IO (Heap_Monad.heap (new v))"
+  [code del]: "ref v = IO (Heap_Monad.heap (alloc_heap v))"
 
 definition lookup :: "'a::heap ref \<Rightarrow> 'a io" ("!_" 61) where
   [code del]: "lookup r = IO (Heap_Monad.tap (\<lambda>h. get_heap h r))"
@@ -106,5 +109,40 @@ code_printing
   | constant mapM \<rightharpoonup> (Haskell) "mapM_"
   | constant whenu \<rightharpoonup> (Haskell) "when"
 *)
+
+lemma set_set_heap [simp]: "set_heap r v2 (set_heap r v1 h) = set_heap r v2 h"
+  by (simp add: set_heap_def)
+
+definition execute_io where
+  "execute_io c h = execute (run_io c) h"
+
+definition effect_io where
+  "effect_io c h h' r = (execute_io c h = Some (r,h'))"
+
+lemma bind_execute[simp]: "execute (m \<bind> k) h = (execute m h) \<bind> (\<lambda>(val,h'). execute (k val) h')"
+proof -
+  have "\<forall>z f za. (case za of None \<Rightarrow> z::('a \<times> heap) option | Some (x::'b \<times> heap) \<Rightarrow> f x) = za \<bind> f \<or> za = None"
+    by fastforce
+  then show ?thesis
+    by (metis (no_types) bind.bind_lzero execute_bind(2) execute_bind_case)
+qed
+
+lemma io_bind_execute[simp]: "execute_io (m \<bind> k) h = (execute_io m h) \<bind> (\<lambda>(val,h'). execute_io (k val) h')"
+  by (simp add: IO.bind_def execute_io_def)
+
+lemma execute_alloc: "execute_io (alloc n) h = (let l = lim h in Some (Array l, h \<lparr> lim := l + n \<rparr>))"
+  apply (simp add: execute_io_def alloc_def heap_def alloc_heap_array_def)
+  apply metis
+  done
+
+lemma execute_update: "execute_io (r := v) h = Some ((), (set_heap r v h))"
+  by (simp add: update_def effect_io_def execute_io_def heap_def)
+
+lemma effect_update: "effect_io (r := v) h (set_heap r v h) ()"
+  by (simp add: update_def effect_io_def execute_io_def heap_def)
+
+lemma update_update: "execute_io (update r v1 \<bind> (\<lambda>_. update r v2)) h = execute_io (update r v2) h"
+  by (simp add: execute_update)
+
 
 end

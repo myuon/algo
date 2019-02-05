@@ -1,5 +1,5 @@
 theory SelectionSort
-  imports Main IO IOArray
+  imports Main IOArray
 begin
 
 fun selection_sort :: "nat io_array \<Rightarrow> unit io" where
@@ -25,9 +25,9 @@ primrec sorted :: "'a::ord list \<Rightarrow> bool" where
 
 fun selection_sort_program where
   "selection_sort_program xs = do {
-    arr \<leftarrow> write_list_as_array xs;
+    arr \<leftarrow> new_array_from_list xs;
     selection_sort arr;
-    read_list_from_array arr
+    read_array_as_list arr
   }"
 
 theorem selection_sort_is_sorted:

@@ -236,7 +236,7 @@ newtype Io a = IO (Heap.ST Heap.RealWorld a);
 
 newtype Ref a = Ref Nat;
 
-data Io_array a = IOArray (Ref a) Nat;
+data Io_array a = IOArray (Heap.STArray Heap.RealWorld a) Nat;
 
 ref :: forall a. a -> Io (Ref a);
 ref _ = error "IO.ref";
@@ -320,18 +320,20 @@ upto_aux i j js =
 upto :: Int -> Int -> [Int];
 upto i j = upto_aux i j [];
 
-addr_of_ref :: forall a. Ref a -> Nat;
-addr_of_ref (Ref x) = x;
-
 get_size :: forall a. Io_array a -> Nat;
 get_size (IOArray uu s) = s;
 
+addr_of_array :: forall a. Heap.STArray Heap.RealWorld a -> Nat;
+addr_of_array (error "bare Array" x) = x;
+
+get_array_addr :: forall a. (Heapa a) => Io_array a -> Nat;
+get_array_addr (IOArray a uu) = addr_of_array a;
+
 read_array :: forall a. (Heapa a) => Io_array a -> Nat -> Io a;
-read_array (IOArray arr uu) i = lookup (Ref (plus_nat (addr_of_ref arr) i));
+read_array arr i = lookup (Ref (plus_nat (get_array_addr arr) i));
 
 write_array :: forall a. (Heapa a) => Io_array a -> Nat -> a -> Io ();
-write_array (IOArray arr uu) i val =
-  update (Ref (plus_nat (addr_of_ref arr) i)) val;
+write_array arr i val = update (Ref (plus_nat (get_array_addr arr) i)) val;
 
 swap_array :: forall a. (Heapa a) => Io_array a -> Nat -> Nat -> Io ();
 swap_array arr i j =
