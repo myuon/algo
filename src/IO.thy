@@ -19,11 +19,16 @@ instance nat :: heap ..
 instance int :: heap ..
 
 datatype addr = Addr nat
-type_synonym heap_rep = nat
+
+instance addr :: ord
+  by (rule Orderings.class.Orderings.ord.of_class.intro)
+
+instance addr :: plus
+  by (rule Groups.class.Groups.plus.of_class.intro)
 
 record heap = 
-  memory :: "addr \<Rightarrow> typerep"
-  lim :: nat
+  memory :: "addr \<Rightarrow> nat"
+  lim :: addr
 
 datatype 'a ref = Ref addr
 
@@ -126,5 +131,60 @@ code_printing
   | type_constructor ref \<rightharpoonup> (Haskell) "IORef _"
   | constant return \<rightharpoonup> (Haskell) "return"
   | constant bind \<rightharpoonup> (Haskell) infixl 5 ">>="
+
+(* Refs *)
+
+definition present :: "heap \<Rightarrow> 'a::heap ref \<Rightarrow> bool" where
+  "present h v = (addr_of_ref v < lim h)"
+
+definition set :: "'a::heap ref \<Rightarrow> 'a \<Rightarrow> heap \<Rightarrow> heap" where
+  "set r v h = h \<lparr> memory := (\<lambda>i. if i = addr_of_ref r then to_nat v else memory h i) \<rparr>"
+
+definition alloc :: "'a \<Rightarrow> heap \<Rightarrow> 'a::heap ref \<times> heap" where
+  "alloc v h = (let l = lim h; r = Ref l in (r, set r v (h \<lparr> lim := lim h + Addr 1 \<rparr>)))"
+
+definition get :: "heap \<Rightarrow> 'a::heap ref \<Rightarrow> 'a" where
+  "get h = from_nat \<circ> memory h \<circ> addr_of_ref"
+
+definition ref :: "'a::heap \<Rightarrow> 'a ref io" where
+  "ref v = IO (alloc v)"
+
+definition lookup :: "'a::heap ref \<Rightarrow> 'a io" ("!_" 61) where
+  "lookup r = tap (\<lambda>h. get h r)"
+
+definition update :: "'a ref \<Rightarrow> 'a::heap \<Rightarrow> unit io" ("_ := _" 62) where
+  "update r v = IO (\<lambda>h. ((), set r v h))"
+
+lemma get_set_eq [simp]: "get (set r x h) r = x"
+  by (simp add: get_def set_def)
+
+lemma heap_eqI:
+  assumes "\<And>x. m1 x = m2 x" and "l1 = l2"
+  shows "\<lparr> memory = m1, lim = l1 \<rparr> = \<lparr> memory = m2, lim = l2 \<rparr>"
+  using assms by auto
+
+lemma set_same [simp]: "set r x (set r y h) = set r x h"
+  apply (simp add: set_def)
+proof-
+  have "\<And>P x y. P x \<Longrightarrow> (\<And>y. x \<noteq> y \<Longrightarrow> P y) \<Longrightarrow> (\<And>z. P z)"
+    by metis
+  hence "\<And>f g. f (addr_of_ref r) = g (addr_of_ref r) \<Longrightarrow> (\<And>x. x \<noteq> addr_of_ref r \<Longrightarrow> f x = g x) \<Longrightarrow> (\<And>z. f z = g z)"
+    by smt
+  hence "\<And>z. (\<lambda>i. if i = addr_of_ref r then to_nat x else memory (h\<lparr>memory := \<lambda>i. if i = addr_of_ref r then to_nat y else memory h i\<rparr>) i) z = (\<lambda>i. if i = addr_of_ref r then to_nat x else memory h i) z"
+    by auto
+  thus "h\<lparr>memory := \<lambda>i. if i = addr_of_ref r then to_nat x else memory (h\<lparr>memory := \<lambda>i. if i = addr_of_ref r then to_nat y else memory h i\<rparr>) i\<rparr> = h\<lparr>memory := \<lambda>i. if i = addr_of_ref r then to_nat x else memory h i\<rparr>"
+    by simp
+qed
+
+lemma execute_ref: "execute (ref v) h = alloc v h"
+  by (simp add: ref_def)
+
+lemma execute_lookup: "execute (lookup r) h = (get h r, h)"
+  by (simp add: lookup_def execute_def tap_def)
+
+lemma execute_update: "execute (update r v) h = ((), set r v h)"
+  by (simp add: update_def)
+
+hide_const (open) present get set alloc
 
 end
