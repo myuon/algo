@@ -1,14 +1,88 @@
 theory IO
-  imports Main "HOL-Imperative_HOL.Imperative_HOL"
+  imports
+    Main
+    "HOL-Library.Countable"
+    "HOL-Library.Monad_Syntax"
 begin
 
-datatype 'a io = IO (run_io: "'a Heap")
+(*
+  We don't use HOL-Imperative_HOL Library, because it does implement
+  arrays as a list in a cell. We will follow the same idea about Heap,
+  but implement arrays as sequent cells in a memory.
+*)
+
+class heap = typerep + countable
+
+instance unit :: heap ..
+instance bool :: heap ..
+instance nat :: heap ..
+instance int :: heap ..
+
+datatype addr = Addr nat
+type_synonym heap_rep = nat
+
+record heap = 
+  memory :: "addr \<Rightarrow> typerep"
+  lim :: nat
+
+datatype 'a ref = Ref addr
+
+primrec nat_of_addr where
+  "nat_of_addr (Addr n) = n"
+
+lemma nat_of_addr_inj [simp]:
+  "nat_of_addr r = nat_of_addr r' \<longleftrightarrow> r = r'"
+  by (cases r, cases r') simp_all
+
+primrec addr_of_ref :: "'a ref \<Rightarrow> addr" where
+  "addr_of_ref (Ref r) = r"
+
+lemma addr_of_ref_inj [simp]:
+  "addr_of_ref r = addr_of_ref r' \<longleftrightarrow> r = r'"
+  by (cases r, cases r') simp_all
+
+primrec nat_of_ref :: "'a ref \<Rightarrow> nat" where
+  "nat_of_ref (Ref r) = (case r of Addr a \<Rightarrow> a)"
+
+instance ref :: (type) countable
+  apply (rule countable_classI [of nat_of_ref])
+  apply (metis addr.case addr.exhaust nat_of_ref.simps ref.exhaust)
+  done
+
+instance ref :: (type) heap ..
+
+datatype 'a io = IO "heap \<Rightarrow> ('a \<times> heap)"
+
+primrec execute :: "'a io \<Rightarrow> heap \<Rightarrow> ('a \<times> heap)" where
+  [code del]: "execute (IO f) = f"
+
+lemma io_execute [simp]:
+  "IO (execute f) = f"
+  by (cases f, simp)
+
+definition tap :: "(heap \<Rightarrow> 'a) \<Rightarrow> 'a io" where
+  [code del]: "tap f = IO (\<lambda>h. (f h, h))"
+
+lemma execute_tap:
+  "execute (tap f) h = (f h, h)"
+  by (simp add: tap_def)
+
+definition effect :: "'a io \<Rightarrow> heap \<Rightarrow> heap \<Rightarrow> 'a \<Rightarrow> bool" where
+  "effect c h h' r = (execute c h = (r,h'))"
+
+lemma effectI: "execute c h = (r,h') \<Longrightarrow> effect c h h' r"
+  by (simp add: effect_def)
+
+lemma effectE:
+  assumes "effect c h h' r"
+  shows "execute c h = (r,h')"
+  using assms by (simp add: effect_def)
 
 definition return :: "'a \<Rightarrow> 'a io" where
-  [code del]: "return x = IO (Heap_Monad.return x)"
+  [code del]: "return x = IO (\<lambda>h. (x,h))"
 
 definition bind :: "'a io \<Rightarrow> ('a \<Rightarrow> 'b io) \<Rightarrow> 'b io" where
-  [code del]: "bind x f = IO (Heap_Monad.bind (run_io x) (run_io \<circ> f))"
+  [code del]: "bind x f = IO (\<lambda>h. case execute x h of (y,h') \<Rightarrow> execute (f y) h')"
 
 adhoc_overloading
   Monad_Syntax.bind IO.bind
@@ -44,32 +118,12 @@ fun whenu :: "bool \<Rightarrow> unit io \<Rightarrow> unit io" where
 fun whenM :: "bool io \<Rightarrow> unit io \<Rightarrow> unit io" where
   "whenM cond f = cond \<bind> (\<lambda>b. if b then f else return ())"
 
-definition execute_io where
-  "execute_io c h = execute (run_io c) h"
-
-definition effect_io where
-  "effect_io c h h' r = (execute_io c h = Some (r,h'))"
-
-lemma bind_execute[simp]: "execute (m \<bind> k) h = (execute m h) \<bind> (\<lambda>(val,h'). execute (k val) h')"
-proof -
-  have "\<forall>z f za. (case za of None \<Rightarrow> z::('a \<times> heap) option | Some (x::'b \<times> heap) \<Rightarrow> f x) = za \<bind> f \<or> za = None"
-    by fastforce
-  then show ?thesis
-    by (metis (no_types) bind.bind_lzero execute_bind(2) execute_bind_case)
-qed
-
-lemma io_bind_execute[simp]: "execute_io (m \<bind> k) h = (execute_io m h) \<bind> (\<lambda>(val,h'). execute_io (k val) h')"
-  by (simp add: IO.bind_def execute_io_def)
-
-code_printing code_module "IO" \<rightharpoonup> (Haskell)
-\<open>import qualified Data.Vector\<close>
-
-code_printing code_module "Heap" \<rightharpoonup> (Haskell)
+lemma bind_execute[simp]: "execute (m \<bind> k) h = (case (execute m h) of (val,h') \<Rightarrow> execute (k val) h')"
+  by (simp add: IO.bind_def)
 
 code_printing
   type_constructor io \<rightharpoonup> (Haskell) "IO _"
   | type_constructor ref \<rightharpoonup> (Haskell) "IORef _"
-  | type_constructor array \<rightharpoonup> (Haskell) "V.IOVector _"
   | constant return \<rightharpoonup> (Haskell) "return"
   | constant bind \<rightharpoonup> (Haskell) infixl 5 ">>="
 
