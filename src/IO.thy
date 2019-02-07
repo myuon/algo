@@ -26,6 +26,9 @@ instance addr :: ord
 instance addr :: plus
   by (rule Groups.class.Groups.plus.of_class.intro)
 
+instance addr :: minus
+  by (rule Groups.class.Groups.minus.of_class.intro)
+
 record heap = 
   memory :: "addr \<Rightarrow> nat"
   lim :: addr
