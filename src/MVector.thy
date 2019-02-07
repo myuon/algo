@@ -130,24 +130,15 @@ proof-
     by (simp add: \<open>\<And>xs. x = length xs \<Longrightarrow> P xs\<close> \<open>x = length zs\<close> \<open>xs = snoc zs z\<close> assms(2))
 qed
 
-lemma from_list_snoc: "execute (from_list (snoc ys y)) h = execute (do {
-  mvec \<leftarrow> new (Suc (size ys));
-  _ \<leftarrow> from_list_pr mvec ys 0;
-  writ mvec (Suc (size ys)) y;
-  return mvec
-}) h"
-  apply (simp add: from_list_def snoc_length)
-  sorry
-
 lemma execute_from_list: "execute (from_list xs) h = (case alloc (size xs) h of (mvec,h0) \<Rightarrow> (mvec, fold (\<lambda>(i,x) h. set_at mvec i x h) (enumerate 0 xs) h0))"
-  apply (induct xs arbitrary: h rule: snoc_induct)
-  apply (simp add: from_list_def new_def)
 proof-
-  fix xs :: "'a list" and y h
-  assume "\<And>h. execute (from_list xs) h = (case alloc (length xs) h of (mvec, h0) \<Rightarrow> (mvec, fold (\<lambda>(x, y). set_at mvec x y) (enumerate 0 xs) h0))"
-
-  show "execute (from_list (snoc xs y)) h = (case alloc (length (snoc xs y)) h of (mvec, h0) \<Rightarrow> (mvec, fold (\<lambda>(x, y). set_at mvec x y) (enumerate 0 (snoc xs y)) h0))"
-    sorry
+  have "\<And>mvec h' i. execute (from_list_pr mvec xs i) h' = (mvec, fold (\<lambda>(i, x). set_at mvec i x) (enumerate i xs) h')"
+    apply (induct xs, simp add: return_def)
+    apply (simp add: execute_writ)
+    done
+  thus "execute (from_list xs) h = (case alloc (size xs) h of (mvec,h0) \<Rightarrow> (mvec, fold (\<lambda>(i,x) h. set_at mvec i x h) (enumerate 0 xs) h0))"
+    apply (simp add: from_list_def execute_new)
+    done
 qed
 
 end
