@@ -88,48 +88,6 @@ definition to_list :: "'a::heap mvector \<Rightarrow> 'a list io" where
 definition set_over :: "'a::heap mvector \<Rightarrow> 'a::heap list \<Rightarrow> heap \<Rightarrow> heap" where
   "set_over r xs h = h \<lparr> memory := (\<lambda>i. if lim h < i \<and> i < lim h + Addr (size xs) then to_nat (get_at h r (nat_of_addr (i - lim h))) else memory h i) \<rparr>"
 
-primrec snoc :: "'a list \<Rightarrow> 'a \<Rightarrow> 'a list" where
-  "snoc [] x = [x]"
-| "snoc (y#ys) x = y # snoc ys x"
-
-lemma snoc_length: "length (snoc ys y) = Suc (length ys)"
-  by (induct ys, auto)
-
-lemma snoc_induct:
-  assumes "P []"
-  and "\<And>xs y. P xs \<Longrightarrow> P (snoc xs y)"
-  shows "P xs"
-  apply (induct "size xs" arbitrary: xs)
-  apply (simp add: assms(1))
-proof-
-  have cons_snoc: "\<And>(a :: 'a list) x xs. a = x # xs \<Longrightarrow> \<exists>y ys. a = snoc ys y"
-  proof-
-    fix a :: "'a list" and x xs
-    show cons_snoc: "a = x # xs \<Longrightarrow> \<exists>y ys. a = snoc ys y"
-      apply (induct a arbitrary: x xs, auto)
-    proof-
-      fix x :: 'a and xs
-      assume "\<And>x (xsa :: 'a list). xs = x # xsa \<Longrightarrow> \<exists>y ys. x # xsa = snoc ys y"
-      show "\<exists>y ys. x # xs = snoc ys y"
-        apply (cases xs)
-        apply (metis snoc.simps(1))
-        by (metis \<open>\<And>xsa xa. xs = xa # xsa \<Longrightarrow> \<exists>y ys. xa # xsa = snoc ys y\<close> snoc.simps(2))
-    qed
-  qed
-
-  fix x and xs :: "'a list"
-  assume "\<And>xs. x = length xs \<Longrightarrow> P xs"
-  and "Suc x = length xs"
-  obtain y ys where "xs = y # ys"
-    by (meson Suc_length_conv \<open>Suc x = length xs\<close>)
-  then obtain z zs where "xs = snoc zs z"
-    using cons_snoc by blast
-  hence "x = length zs"
-    by (simp add: Suc_inject \<open>Suc x = length xs\<close> snoc_length)
-  show "P xs"
-    by (simp add: \<open>\<And>xs. x = length xs \<Longrightarrow> P xs\<close> \<open>x = length zs\<close> \<open>xs = snoc zs z\<close> assms(2))
-qed
-
 lemma execute_from_list: "execute (from_list xs) h = (case alloc (size xs) h of (mvec,h0) \<Rightarrow> (mvec, fold (\<lambda>(i,x) h. set_at mvec i x h) (enumerate 0 xs) h0))"
 proof-
   have "\<And>mvec h' i. execute (from_list_pr mvec xs i) h' = (mvec, fold (\<lambda>(i, x). set_at mvec i x) (enumerate i xs) h')"
