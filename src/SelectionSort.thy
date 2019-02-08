@@ -2,7 +2,7 @@ theory SelectionSort
   imports Main MVector
 begin
 
-fun selection_sort :: "nat mvector \<Rightarrow> unit io" where
+definition selection_sort :: "nat mvector \<Rightarrow> unit io" where
   "selection_sort arr = (let n = size_of_mvector arr in forMu [0..<n] (\<lambda>i. do {
     min_ref \<leftarrow> ref i;
     forMu [i..<n] (\<lambda>j. do {
@@ -27,9 +27,81 @@ fun selection_sort_program where
     to_list arr
   }"
 
+definition outer_loop where
+  "outer_loop arr n i = (do {
+    min_ref \<leftarrow> ref i;
+    forMu [i..<n] (\<lambda>j. do {
+      valJ \<leftarrow> read arr (j+1);
+      m \<leftarrow> ! min_ref;
+      valMin \<leftarrow> read arr m;
+      whenu (valJ < valMin) (min_ref := j)
+    });
+    m \<leftarrow> ! min_ref;
+    swap arr i m;
+    return ()
+  })"
+
+lemma selection_sort_as_outer_loop: "selection_sort arr = (let n = size_of_mvector arr in forMu [0..<n] (outer_loop arr n))"
+  unfolding selection_sort_def outer_loop_def
+  by simp
+
+lemma forM_invariant:
+  assumes "P 0 ((),h)"
+  and "\<And>i h. \<lbrakk> P i (execute (forMu (take i xs) program) h); i < size xs \<rbrakk> \<Longrightarrow> P (i+1) (execute (forMu (take (i+1) xs) program) h)"
+  shows "P (size xs) (execute (forMu xs program) h)"
+  sorry
+
+definition is_sorted_outer where
+  "is_sorted_outer mvec i n h = (case execute (forMu [0..<i] (outer_loop mvec n)) h of (_,h') \<Rightarrow> sorted (take i (get_over mvec h')))"
+
+lemma outer_loop_invariant:
+  assumes "n = size_of_mvector arr"
+  and "\<And>i. is_sorted_outer arr i n h \<Longrightarrow> is_sorted_outer arr (i+1) n h"
+  shows "is_sorted_outer arr n n h"
+  apply (simp add: is_sorted_outer_def)
+  using forM_invariant [of "\<lambda>i _. is_sorted_outer arr i n h" _ "[0..<n]"]
+  using assms(2) is_sorted_outer_def by force
+
 theorem selection_sort_is_sorted:
   assumes "effect (selection_sort_program xs) h h' rs"
   shows "sorted rs"
-  sorry
+proof-
+  obtain h' arr where
+    "effect (from_list xs) h h' arr"
+    "size_of_mvector arr = size xs"
+    by (simp add: effect_def execute_from_list get_over_def alloc_def)
+  hence X: "execute (from_list xs) h = (arr,h')"
+    by (simp add: effect_def)
+  
+  have "\<And>h. size (get_over arr h) = size xs"
+    apply (simp add: get_over_def get_over_internal_def)
+    by (metis \<open>size_of_mvector arr = length xs\<close>)
+  hence "\<And>h. take (size xs) (get_over arr h) = get_over arr h"
+    by simp
+
+  have "\<And>i. is_sorted_outer arr i (size xs) h' \<Longrightarrow> is_sorted_outer arr (i+1) (size xs) h'"
+    sorry
+
+  hence "is_sorted_outer arr (size xs) (size xs) h'"
+    by (simp add: \<open>size_of_mvector arr = length xs\<close> outer_loop_invariant)
+  hence "is_sorted_outer arr (size xs) (size xs) h'"
+    by simp
+  hence "(case execute (selection_sort arr) h' of (_,h') \<Rightarrow> sorted (take (size xs) (get_over arr h')))"
+    apply (simp add: is_sorted_outer_def selection_sort_as_outer_loop)
+    by (metis \<open>size_of_mvector arr = length xs\<close>)
+  hence "(case execute (selection_sort arr) h' of (_,h') \<Rightarrow> sorted (get_over arr h'))"
+    by (simp add: \<open>\<And>h. take (length xs) (get_over arr h) = get_over arr h\<close>)
+  hence Y: "case execute (do { selection_sort arr; to_list arr }) h' of (rs,_) \<Rightarrow> sorted rs"
+    by (simp add: execute_bind execute_to_list, auto)
+
+  have "case execute (selection_sort_program xs) h of (rs,_) \<Rightarrow> sorted rs"
+    using Y
+    apply (simp add: execute_bind X)
+    done
+  thus ?thesis
+    using assms
+    apply (simp add: effect_def)
+    done
+qed
 
 end

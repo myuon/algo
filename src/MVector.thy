@@ -102,8 +102,8 @@ qed
 definition get_over_internal where
   "get_over_internal mvec h n = map (get_at h mvec) [0..<n]"
 
-definition get_over :: "'a::heap mvector \<Rightarrow> heap \<Rightarrow> ('a list \<times> heap)" where
-  "get_over mvec h = (get_over_internal mvec h (size_of_mvector mvec), h)"
+definition get_over :: "'a::heap mvector \<Rightarrow> heap \<Rightarrow> 'a list" where
+  "get_over mvec h = get_over_internal mvec h (size_of_mvector mvec)"
 
 lemma mapM_append: "execute (mapM f (xs @ ys)) h = execute (do {
   rx \<leftarrow> mapM f xs;
@@ -190,7 +190,7 @@ proof-
     by simp
 qed
 
-lemma execute_to_list: "execute (to_list mvec) h = get_over mvec h"
+lemma execute_to_list: "execute (to_list mvec) h = (get_over mvec h, h)"
   apply (simp add: to_list_def get_over_def)
 proof-
   have "\<And>n. execute (mapM (read mvec) [0..<n]) h = (get_over_internal mvec h n, h)"
