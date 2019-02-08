@@ -83,7 +83,7 @@ definition from_list :: "'a::heap list \<Rightarrow> 'a mvector io" where
   "from_list xs = new (size xs) \<bind> (\<lambda>mvec. from_list_pr mvec xs 0)"
 
 definition to_list :: "'a::heap mvector \<Rightarrow> 'a list io" where
-  "to_list vec = (let s = size_of_mvector vec in mapM (\<lambda>i. read vec (nat i)) [0..int s])"
+  "to_list vec = (let s = size_of_mvector vec in mapM (read vec) [0..<s])"
 
 definition set_over :: "'a::heap mvector \<Rightarrow> 'a::heap list \<Rightarrow> heap \<Rightarrow> heap" where
   "set_over r xs h = h \<lparr> memory := (\<lambda>i. if lim h < i \<and> i < lim h + Addr (size xs) then to_nat (get_at h r (nat_of_addr (i - lim h))) else memory h i) \<rparr>"
@@ -92,11 +92,128 @@ lemma execute_from_list: "execute (from_list xs) h = (case alloc (size xs) h of 
 proof-
   have "\<And>mvec h' i. execute (from_list_pr mvec xs i) h' = (mvec, fold (\<lambda>(i, x). set_at mvec i x) (enumerate i xs) h')"
     apply (induct xs, simp add: return_def)
-    apply (simp add: execute_writ)
+    apply (simp add: execute_writ execute_bind)
     done
   thus "execute (from_list xs) h = (case alloc (size xs) h of (mvec,h0) \<Rightarrow> (mvec, fold (\<lambda>(i,x) h. set_at mvec i x h) (enumerate 0 xs) h0))"
-    apply (simp add: from_list_def execute_new)
+    apply (simp add: from_list_def execute_new execute_bind)
     done
+qed
+
+definition get_over_internal where
+  "get_over_internal mvec h n = map (get_at h mvec) [0..<n]"
+
+definition get_over :: "'a::heap mvector \<Rightarrow> heap \<Rightarrow> ('a list \<times> heap)" where
+  "get_over mvec h = (get_over_internal mvec h (size_of_mvector mvec), h)"
+
+lemma mapM_append: "execute (mapM f (xs @ ys)) h = execute (do {
+  rx \<leftarrow> mapM f xs;
+  ry \<leftarrow> mapM f ys;
+  return (rx @ ry)
+}) h"
+  apply (induct xs arbitrary: ys h, simp)
+proof-
+  have f: "\<And>x y z h. execute (x \<bind> (\<lambda>b. (y \<bind> (\<lambda>rx. z \<bind> (\<lambda>ry. return (rx @ ry)))) \<bind> (\<lambda>c. return (b # c)))) h =
+                     execute (x \<bind> (\<lambda>b. y \<bind> (\<lambda>rx. z \<bind> (\<lambda>ry. return (rx @ ry) \<bind> (\<lambda>c. return (b # c)))))) h"
+    by (smt execute_bind split_def)
+
+  fix a xs ys h
+  assume p: "\<And>ys h. execute (mapM f (xs @ ys)) h = execute (do {
+    rx \<leftarrow> mapM f xs;
+    ry \<leftarrow> mapM f ys;
+    return (rx @ ry)
+  }) h"
+  have "execute (mapM f ((a # xs) @ ys)) h = execute (do {
+    b \<leftarrow> f a;
+    c \<leftarrow> mapM f (xs @ ys);
+    return (b#c)
+  }) h"
+    by (simp)
+  also have "\<dots> = execute (do {
+    b \<leftarrow> f a;
+    c \<leftarrow> do {
+      rx \<leftarrow> mapM f xs;
+      ry \<leftarrow> mapM f ys;
+      return (rx @ ry)
+    };
+    return (b#c)
+  }) h"
+    by (simp add: p return_def execute_bind)
+  also have "\<dots> = execute (do {
+    b \<leftarrow> f a;
+    rx \<leftarrow> mapM f xs;
+    ry \<leftarrow> mapM f ys;
+    c \<leftarrow> return (rx @ ry);
+    return (b#c)
+  }) h"
+    using f [of "f a" "mapM f xs" "mapM f ys" h] by simp
+  also have "\<dots> = execute (do {
+    b \<leftarrow> f a;
+    rx \<leftarrow> mapM f xs;
+    ry \<leftarrow> mapM f ys;
+    return ((b # rx) @ ry)
+  }) h"
+  proof-
+    have "\<And>rx ry b h. execute (do { c \<leftarrow> return (rx @ ry); return (b#c) }) h = execute (do { return (b # rx @ ry) }) h"
+      by (simp add: return_def execute_bind)
+    hence "\<And>x p q h. execute (do { b \<leftarrow> x; rx \<leftarrow> p; ry \<leftarrow> q; c \<leftarrow> return (rx @ ry); return (b#c) }) h
+                   = execute (do { b \<leftarrow> x; rx \<leftarrow> p; ry \<leftarrow> q; return (b # (rx @ ry)) }) h"
+      by (simp add: return_def execute_bind)
+    thus ?thesis
+      by (simp add: return_def)
+  qed
+  also have "\<dots> = execute (do {
+    b \<leftarrow> f a;
+    rx \<leftarrow> mapM f xs;
+    brx \<leftarrow> return (b # rx);
+    ry \<leftarrow> mapM f ys;
+    return (brx @ ry)
+  }) h"
+  proof-
+    have "\<And>b rx. do { ry \<leftarrow> mapM f ys; return (b # rx @ ry) } = do { brx \<leftarrow> return (b # rx); ry \<leftarrow> mapM f ys; return (brx @ ry) }"
+      by (simp)
+    thus ?thesis
+      by simp
+  qed
+  also have "\<dots> = execute (do {
+    brx \<leftarrow> mapM f (a # xs);
+    ry \<leftarrow> mapM f ys;
+    return (brx @ ry)
+  }) h"
+  proof-
+    have hyp: "do { b \<leftarrow> f a; rx \<leftarrow> mapM f xs; return (b # rx) } = do { mapM f (a # xs) }"
+      by simp
+    show ?thesis
+      apply (subst hyp [symmetric])
+      by (smt execute_bind split_def)
+  qed
+  finally show "execute (mapM f ((a # xs) @ ys)) h = execute (mapM f (a # xs) \<bind> (\<lambda>rx. mapM f ys \<bind> (\<lambda>ry. return (rx @ ry)))) h"
+    by simp
+qed
+
+lemma execute_to_list: "execute (to_list mvec) h = get_over mvec h"
+  apply (simp add: to_list_def get_over_def)
+proof-
+  have "\<And>n. execute (mapM (read mvec) [0..<n]) h = (get_over_internal mvec h n, h)"
+  proof-
+    fix n
+    show "execute (mapM (read mvec) [0..<n]) h = (get_over_internal mvec h n, h)"
+      apply (induct n arbitrary: h)
+      apply (simp add: get_over_internal_def return_def)
+      apply (simp add: get_over_internal_def mapM_append)
+    proof-
+      fix n h
+      assume "\<And>h. execute (mapM (read mvec) [0..<n]) h = (map (get_at h mvec) [0..<n], h)"
+      hence "execute (mapM (read mvec) [0..<n] \<bind> (\<lambda>rx. read mvec n \<bind> (\<lambda>x. return (rx @ [x])))) h = (let rx = map (get_at h mvec) [0..<n] in execute (read mvec n \<bind> (\<lambda>x. return (rx @ [x]))) h)"
+        by (simp add: execute_bind)
+      also have "\<dots> = (map (get_at h mvec) [0..<n] @ [get_at h mvec n], h)"
+        by (simp add: execute_bind execute_read return_def)
+      finally show "execute (mapM (read mvec) [0..<n] \<bind> (\<lambda>rx. read mvec n \<bind> (\<lambda>x. return (rx @ [x])))) h = (map (get_at h mvec) [0..<n] @ [get_at h mvec n], h)"
+        by simp
+    qed
+  qed
+
+  thus "execute (mapM (read mvec) [0..<size_of_mvector mvec]) h = (get_over_internal mvec h (size_of_mvector mvec), h)"
+    by simp
 qed
 
 end

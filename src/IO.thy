@@ -126,7 +126,7 @@ fun whenu :: "bool \<Rightarrow> unit io \<Rightarrow> unit io" where
 fun whenM :: "bool io \<Rightarrow> unit io \<Rightarrow> unit io" where
   "whenM cond f = cond \<bind> (\<lambda>b. if b then f else return ())"
 
-lemma bind_execute[simp]: "execute (m \<bind> k) h = (case (execute m h) of (val,h') \<Rightarrow> execute (k val) h')"
+lemma execute_bind: "execute (m \<bind> k) h = (case (execute m h) of (val,h') \<Rightarrow> execute (k val) h')"
   by (simp add: IO.bind_def)
 
 code_printing
