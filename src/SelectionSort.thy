@@ -50,7 +50,7 @@ proof-
     by (simp add: \<open>\<And>xs. x = length xs \<Longrightarrow> P xs\<close> \<open>x = length zs\<close> \<open>xs = snoc zs z\<close> assms(2))
 qed
 
-lemma forM_invariant:
+lemma forM_invariant_old:
   assumes "P 0 ((),h)"
   and "\<And>i xs h. \<lbrakk> P i (execute (forMu (take i xs) program) h); i < size xs \<rbrakk> \<Longrightarrow> P (i+1) (execute (forMu (take (i+1) xs) program) h)"
   shows "P (size xs) (execute (forMu xs program) h)"
@@ -69,6 +69,33 @@ proof-
   thus "P (length (snoc xs y)) (execute (forMu (snoc xs y) program) h)"
     by simp
 qed
+
+lemma take_induct:
+  assumes "P []"
+  and "\<And>i. \<lbrakk> P (take i xs); i < size xs \<rbrakk> \<Longrightarrow> P (take (i+1) xs)"
+  shows "P xs"
+proof-
+  have "\<And>(n :: nat). n < size xs \<Longrightarrow> P (take n xs)"
+  proof-
+    fix n
+    assume "n < size xs"
+    show "P (take n xs)"
+      apply (induct n)
+      apply (simp add: assms(1))
+      using assms(2) by fastforce
+  qed
+  thus ?thesis
+    by (metis Suc_eq_plus1 assms(1) assms(2) gr0_conv_Suc leI lessI order_refl take0 take_all)
+qed
+
+lemma forM_invariant:
+  assumes "P 0 ((),h)"
+  and "\<And>i h. \<lbrakk> P i (execute (forMu (take i xs) program) h); i < size xs \<rbrakk> \<Longrightarrow> P (i+1) (execute (forMu (take (i+1) xs) program) h)"
+  shows "P (size xs) (execute (forMu xs program) h)"
+  apply (induct xs rule: take_induct)
+  apply (simp add: return_def assms(1))
+  apply (metis Suc_eq_plus1 Suc_leI assms(2) length_take min.absorb2 nat_less_le)
+  done
 
 definition selection_sort :: "nat mvector \<Rightarrow> unit io" where
   "selection_sort arr = (let n = size_of_mvector arr in forMu [0..<n] (\<lambda>i. do {
@@ -118,7 +145,7 @@ definition is_sorted_outer where
 
 lemma outer_loop_invariant:
   assumes "n = size_of_mvector arr"
-  and "\<And>i n. is_sorted_outer arr i n h \<Longrightarrow> is_sorted_outer arr (i+1) n h"
+  and "\<And>i. is_sorted_outer arr i n h \<Longrightarrow> is_sorted_outer arr (i+1) n h"
   shows "is_sorted_outer arr n n h"
   apply (simp add: is_sorted_outer_def)
   using forM_invariant [of "\<lambda>i _. is_sorted_outer arr i n h"]
