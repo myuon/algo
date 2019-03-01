@@ -129,6 +129,19 @@ fun whenM :: "bool io \<Rightarrow> unit io \<Rightarrow> unit io" where
 lemma execute_bind: "execute (m \<bind> k) h = (case (execute m h) of (val,h') \<Rightarrow> execute (k val) h')"
   by (simp add: IO.bind_def)
 
+lemma forMu_nil [simp]: "execute (forMu [] p) h = ((),h)"
+  by (simp add: return_def)
+
+lemma forMu_app:
+  "execute (forMu (as@bs) program) h = execute (do {
+    _ \<leftarrow> forMu as program;
+    _ \<leftarrow> forMu bs program;
+    return ()
+  }) h"
+  apply (induct as arbitrary: h, simp)
+  apply (simp add: execute_bind)
+  done
+
 code_printing
   type_constructor io \<rightharpoonup> (Haskell) "IO _"
   | type_constructor ref \<rightharpoonup> (Haskell) "IORef _"

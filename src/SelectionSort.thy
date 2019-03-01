@@ -83,6 +83,29 @@ lemma outer_loop_invariant:
   using forM_invariant [of "\<lambda>i _. is_sorted_outer arr i n h"]
   by (metis (mono_tags, lifting) SelectionSort.sorted.simps(1) assms(2) diff_zero is_sorted_outer_def length_upt split_def take0)
 
+lemma outer_loop_step:
+  assumes "is_sorted_outer arr i (size xs) h" "i < size xs"
+  shows "is_sorted_outer arr (i+1) (size xs) h"
+proof-
+  have "case execute (forMu [0..<i] (outer_loop arr (size xs))) h of (_,h') \<Rightarrow> sorted (take i (get_over arr h'))"
+    using assms (1)
+    apply (simp add: is_sorted_outer_def)
+    done
+
+  have "\<And>h'. sorted (take i (get_over arr h')) \<Longrightarrow> case execute (outer_loop arr (size xs) i) h' of (_,h'') \<Rightarrow> sorted (take (i+1) (get_over arr h''))"
+    sorry
+
+  hence "case execute (do {
+    forMu [0..<i] (outer_loop arr (size xs));
+    outer_loop arr (size xs) i
+  }) h of (_,h') \<Rightarrow> sorted (take (i+1) (get_over arr h'))"
+    apply (simp add: execute_bind)
+    using \<open>case execute (forMu [0..<i] (outer_loop arr (size xs))) h of (x, h') \<Rightarrow> SelectionSort.sorted (take i (get_over arr h'))\<close> by fastforce
+  thus "is_sorted_outer arr (i+1) (size xs) h"
+    apply (simp add: is_sorted_outer_def forMu_app)
+    done
+qed
+
 theorem selection_sort_is_sorted:
   assumes "effect (selection_sort_program xs) h h' rs"
   shows "sorted rs"
@@ -149,7 +172,7 @@ lemma inner_loop_invariant:
   assumes "n = size_of_mvector arr"
   and "\<And>j. \<lbrakk> inner_inv arr n i min_ref j h; j < n \<rbrakk> \<Longrightarrow> inner_inv arr n i min_ref (j+1) h"
   shows "inner_inv arr n i min_ref n h"
+  using forM_invariant [of _ h "[i..<n]"]
   sorry
-
 
 end
