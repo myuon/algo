@@ -77,7 +77,7 @@ definition is_sorted_outer where
 
 lemma outer_loop_invariant:
   assumes "n = size_of_mvector arr"
-  and "\<And>i. is_sorted_outer arr i n h \<Longrightarrow> is_sorted_outer arr (i+1) n h"
+  and "\<And>i. \<lbrakk> is_sorted_outer arr i n h; i < n \<rbrakk> \<Longrightarrow> is_sorted_outer arr (i+1) n h"
   shows "is_sorted_outer arr n n h"
   apply (simp add: is_sorted_outer_def)
   using forM_invariant [of "\<lambda>i _. is_sorted_outer arr i n h"]
@@ -100,9 +100,8 @@ proof-
   hence "\<And>h. take (size xs) (get_over arr h) = get_over arr h"
     by simp
 
-  have "\<And>i n. is_sorted_outer arr i n h' \<Longrightarrow> is_sorted_outer arr (i+1) n h'"
+  have "\<And>i. \<lbrakk> is_sorted_outer arr i (size xs) h'; i < size xs \<rbrakk> \<Longrightarrow> is_sorted_outer arr (i+1) (size xs) h'"
     sorry
-
   hence "is_sorted_outer arr (size xs) (size xs) h'"
     by (simp add: \<open>size_of_mvector arr = length xs\<close> outer_loop_invariant)
   hence "is_sorted_outer arr (size xs) (size xs) h'"
@@ -124,5 +123,33 @@ proof-
     apply (simp add: effect_def)
     done
 qed
+
+definition inner_loop where
+  "inner_loop arr n i min_ref j = (do {
+    valJ \<leftarrow> read arr (j+1);
+    m \<leftarrow> ! min_ref;
+    valMin \<leftarrow> read arr m;
+    whenu (valJ < valMin) (min_ref := j)
+  })"
+
+lemma outer_loop_as_inner_loop: "outer_loop arr n i = (do {
+  min_ref \<leftarrow> ref i;
+  forMu [i..<n] (inner_loop arr n i min_ref);
+  m \<leftarrow> ! min_ref;
+  swap arr i m;
+  return ()
+})"
+  unfolding outer_loop_def inner_loop_def
+  by simp
+
+definition inner_inv where
+  "inner_inv arr n i min_ref j h = (\<forall>k. i \<le> k \<and> k \<le> j \<longrightarrow> IO.get h min_ref \<le> MVector.get_at h arr k)"
+
+lemma inner_loop_invariant:
+  assumes "n = size_of_mvector arr"
+  and "\<And>j. \<lbrakk> inner_inv arr n i min_ref j h; j < n \<rbrakk> \<Longrightarrow> inner_inv arr n i min_ref (j+1) h"
+  shows "inner_inv arr n i min_ref n h"
+  sorry
+
 
 end
