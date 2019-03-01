@@ -32,8 +32,8 @@ lemma forM_invariant:
 definition selection_sort :: "nat mvector \<Rightarrow> unit io" where
   "selection_sort arr = (let n = size_of_mvector arr in forMu [0..<n] (\<lambda>i. do {
     min_ref \<leftarrow> ref i;
-    forMu [i..<n] (\<lambda>j. do {
-      valJ \<leftarrow> read arr (j+1);
+    forMu [i+1..<n] (\<lambda>j. do {
+      valJ \<leftarrow> read arr j;
       m \<leftarrow> ! min_ref;
       valMin \<leftarrow> read arr m;
       whenu (valJ < valMin) (min_ref := j)
@@ -57,8 +57,8 @@ fun selection_sort_program where
 definition outer_loop where
   "outer_loop arr n i = (do {
     min_ref \<leftarrow> ref i;
-    forMu [i..<n] (\<lambda>j. do {
-      valJ \<leftarrow> read arr (j+1);
+    forMu [i+1..<n] (\<lambda>j. do {
+      valJ \<leftarrow> read arr j;
       m \<leftarrow> ! min_ref;
       valMin \<leftarrow> read arr m;
       whenu (valJ < valMin) (min_ref := j)
@@ -74,8 +74,8 @@ lemma selection_sort_as_outer_loop: "selection_sort arr = (let n = size_of_mvect
 definition outer_loop_find_min where
   "outer_loop_find_min arr n i = (do {
     min_ref \<leftarrow> ref i;
-    forMu [i..<n] (\<lambda>j. do {
-      valJ \<leftarrow> read arr (j+1);
+    forMu [i+1..<n] (\<lambda>j. do {
+      valJ \<leftarrow> read arr j;
       m \<leftarrow> ! min_ref;
       valMin \<leftarrow> read arr m;
       whenu (valJ < valMin) (min_ref := j)
@@ -93,7 +93,7 @@ lemma outer_loop_as_find_min_and_swap:
   by (simp add: outer_loop_def outer_loop_find_min_def)
 
 definition outer_loop_invariant where
-  "outer_loop_invariant arr i n h = (\<exists>h'. effect (outer_loop arr n i) h h' () \<and> sorted (take i (get_over arr h')) \<and> get_at h' arr i = Min (set (map (get_at h' arr) [i..<n])))"
+  "outer_loop_invariant arr i n h = (\<exists>h'. effect (outer_loop arr n i) h h' () \<and> sorted (take i (get_over arr h')) \<and> get_at h' arr i = Min (set (map (get_at h' arr) [i+1..<n])))"
 
 lemma outer_loop_invariant_step:
   assumes "outer_loop_invariant arr i n h"
@@ -104,19 +104,87 @@ proof-
     by (metis assms(2) effect_bind outer_loop_as_find_min_and_swap)
   hence "get_at h1 arr r = Min (set (map (get_at h1 arr) [i..<n]))"
     using outer_loop_find_min_finds_min_index by blast
-
-  have "get_at h' arr i = Min (set (map (get_at h' arr) [i..<n]))"
-    using assms(2)
-    apply (simp add: outer_loop_as_find_min_and_swap)
-    sorry
+  hence "get_at h' arr i = Min (set (map (get_at h' arr) [i+1..<n]))"
+    by (metis assms(1) assms(2) effectE outer_loop_invariant_def prod.sel(2))
 
   show ?thesis
     sorry
 qed
 
-definition is_sorted_outer where
-  "is_sorted_outer mvec i n h = ((i > 0) \<longrightarrow> (case execute (forMu [0..<i] (outer_loop mvec n)) h of (_,h') \<Rightarrow> sorted (take i (get_over mvec h')) \<and> (\<forall>k. i \<le> k \<and> k < n \<longrightarrow> get_at h' mvec (i-1) \<le> get_at h' mvec k)))"
+definition inner_loop where
+  "inner_loop arr n i min_ref j = (do {
+    valJ \<leftarrow> read arr j;
+    m \<leftarrow> ! min_ref;
+    valMin \<leftarrow> read arr m;
+    whenu (valJ < valMin) (min_ref := j)
+  })"
 
+lemma outer_loop_find_min_as_inner_loop:
+  "outer_loop_find_min arr n i = (do {
+    min_ref \<leftarrow> ref i;
+    forMu [i+1..<n] (inner_loop arr n i min_ref);
+    ! min_ref
+  })"
+  unfolding outer_loop_find_min_def inner_loop_def apply simp
+  done
+
+definition inner_loop_invariant where
+  "inner_loop_invariant arr i n min_ref j h = (get_at h arr (IO.get h min_ref) = Min (set (map (get_at h arr) [i+1..<j])))"
+
+(*
+lemma execute_inner_loop: "execute (inner_loop arr n i min_ref j) h = ((), if get_at h arr (j+1) < get_at h arr (IO.get h min_ref) then IO.set min_ref j h else h)"
+  apply (simp add: inner_loop_def)
+  apply (simp add: execute_bind execute_read execute_lookup)
+  apply (simp add: execute_update return_def)
+  done
+*)
+
+lemma execute_if: "execute (if b then p else q) h = (if b then execute p h else execute q h)"
+  by simp
+
+lemma effect_inner_loop:
+  assumes "effect (inner_loop arr i n min_ref j) h h' ()"
+  shows "get_at h arr (IO.get h' min_ref) = min (get_at h arr (IO.get h' min_ref)) (get_at h arr j)"
+  using assms
+  apply (simp add: effect_def inner_loop_def)
+  apply (simp add: execute_bind execute_read execute_lookup)
+  apply (simp add: execute_if)
+proof-
+  assume X: "(if get_at h arr j < get_at h arr (IO.get h min_ref) then execute (min_ref := j) h else execute (return ()) h) = ((), h')"
+
+  {
+    assume "get_at h arr j < get_at h arr (IO.get h min_ref)"
+    hence "((), h') = execute (min_ref := j) h"
+      using X by simp
+    hence "h' = IO.set min_ref j h"
+      by (simp add: execute_update)
+    hence "get_at h arr (IO.get h' min_ref) = min (get_at h arr (IO.get h' min_ref)) (get_at h arr j)"
+      apply (simp)
+      by (simp add: min_def_raw)
+  }
+  hence "get_at h arr j < get_at h arr (IO.get h min_ref) \<Longrightarrow> get_at h arr (IO.get h' min_ref) = min (get_at h arr (IO.get h' min_ref)) (get_at h arr j)"
+    by simp
+
+  {
+    assume "get_at h arr j \<ge> get_at h arr (IO.get h min_ref)"
+    hence "((), h') = execute (return ()) h"
+      using X sorry
+  }
+
+  show "get_at h arr (IO.get h' min_ref) = min (get_at h arr (IO.get h' min_ref)) (get_at h arr j)"
+    sorry
+qed
+
+lemma inner_loop_invariant_step:
+  assumes "inner_loop_invariant arr i n min_ref j h"
+  and "effect (inner_loop arr i n min_ref j) h h' ()"
+  shows "inner_loop_invariant arr i n min_ref (j+1) h'"
+proof-
+  have "get_at h arr (IO.get h' min_ref) = min (Min (set (map (get_at h arr) [i..<j]))) (get_at h arr (j+1))"
+    sorry
+
+  sorry
+qed
 (*
 lemma outer_loop_invariant:
   assumes "n = size (get_over arr h)"

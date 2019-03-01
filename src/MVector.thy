@@ -87,7 +87,7 @@ lemma effect_writ:
 lemma effect_swap:
   assumes "effect (swap arr i j) h h' ()"
   and "i \<noteq> j"
-  shows "get_at h arr i = get_at h' arr j" and "get_at h arr j = get_at h' arr i"
+  shows "get_at h' arr i = get_at h arr j" and "get_at h' arr j = get_at h arr i"
 proof-
   obtain h1 ri rj where
     "effect (read arr i) h h ri"
@@ -145,11 +145,12 @@ proof-
   have h': "h' = set_at arr i rj (set_at arr j ri h)"
     using \<open>effect (writ arr i rj) h1 h' ()\<close> \<open>effect (writ arr j ri) h h1 ()\<close> effect_writ by blast
 
-  show "get_at h arr i = get_at h' arr j"
+  show "get_at h' arr i = get_at h arr j"
     apply (simp add: h')
-    sorry
-  show "get_at h arr j = get_at h' arr i"
-    sorry
+    by (simp add: \<open>rj = get_at h arr j\<close>)
+  show "get_at h' arr j = get_at h arr i"
+    apply (simp add: h')
+    by (simp add: \<open>ri = get_at h arr i\<close> assms(2) get_set_neq)
 qed
 
 
