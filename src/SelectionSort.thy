@@ -64,24 +64,66 @@ definition outer_loop where
       whenu (valJ < valMin) (min_ref := j)
     });
     m \<leftarrow> ! min_ref;
-    swap arr i m;
-    return ()
+    swap arr i m
   })"
 
 lemma selection_sort_as_outer_loop: "selection_sort arr = (let n = size_of_mvector arr in forMu [0..<n] (outer_loop arr n))"
   unfolding selection_sort_def outer_loop_def
   by simp
 
-definition is_sorted_outer where
-  "is_sorted_outer mvec i n h = (case execute (forMu [0..<i] (outer_loop mvec n)) h of (_,h') \<Rightarrow> sorted (take i (get_over mvec h')))"
+definition outer_loop_find_min where
+  "outer_loop_find_min arr n i = (do {
+    min_ref \<leftarrow> ref i;
+    forMu [i..<n] (\<lambda>j. do {
+      valJ \<leftarrow> read arr (j+1);
+      m \<leftarrow> ! min_ref;
+      valMin \<leftarrow> read arr m;
+      whenu (valJ < valMin) (min_ref := j)
+    });
+    ! min_ref
+  })"
 
+lemma outer_loop_find_min_finds_min_index:
+  assumes "effect (outer_loop_find_min arr n i) h h' r"
+  shows "get_at h' arr r = Min (set (map (get_at h' arr) [i..<n]))"
+  sorry
+
+lemma outer_loop_as_find_min_and_swap:
+  "outer_loop arr n i = outer_loop_find_min arr n i \<bind> (\<lambda>m. swap arr i m)"
+  by (simp add: outer_loop_def outer_loop_find_min_def)
+
+definition outer_loop_invariant where
+  "outer_loop_invariant arr i n h = (\<exists>h'. effect (outer_loop arr n i) h h' () \<and> sorted (take i (get_over arr h')) \<and> get_at h' arr i = Min (set (map (get_at h' arr) [i..<n])))"
+
+lemma outer_loop_invariant_step:
+  assumes "outer_loop_invariant arr i n h"
+  and "effect (outer_loop arr n i) h h' ()"
+  shows "outer_loop_invariant arr (i+1) n h'"
+proof-
+  obtain h1 r where "effect (outer_loop_find_min arr n i) h h1 r" "effect (swap arr i r) h1 h' ()"
+    by (metis assms(2) effect_bind outer_loop_as_find_min_and_swap)
+  hence "get_at h1 arr r = Min (set (map (get_at h1 arr) [i..<n]))"
+    using outer_loop_find_min_finds_min_index by blast
+
+  have "get_at h' arr i = Min (set (map (get_at h' arr) [i..<n]))"
+    using assms(2)
+    apply (simp add: outer_loop_as_find_min_and_swap)
+    sorry
+
+  show ?thesis
+    sorry
+qed
+
+definition is_sorted_outer where
+  "is_sorted_outer mvec i n h = ((i > 0) \<longrightarrow> (case execute (forMu [0..<i] (outer_loop mvec n)) h of (_,h') \<Rightarrow> sorted (take i (get_over mvec h')) \<and> (\<forall>k. i \<le> k \<and> k < n \<longrightarrow> get_at h' mvec (i-1) \<le> get_at h' mvec k)))"
+
+(*
 lemma outer_loop_invariant:
-  assumes "n = size_of_mvector arr"
+  assumes "n = size (get_over arr h)"
   and "\<And>i. \<lbrakk> is_sorted_outer arr i n h; i < n \<rbrakk> \<Longrightarrow> is_sorted_outer arr (i+1) n h"
   shows "is_sorted_outer arr n n h"
-  apply (simp add: is_sorted_outer_def)
-  using forM_invariant [of "\<lambda>i _. is_sorted_outer arr i n h"]
-  by (metis (mono_tags, lifting) SelectionSort.sorted.simps(1) assms(2) diff_zero is_sorted_outer_def length_upt split_def take0)
+  using forM_invariant [of "\<lambda>i _. is_sorted_outer arr i n h" h "get_over arr h"]
+  using assms(1) assms(2) is_sorted_outer_def by blast
 
 lemma outer_loop_step:
   assumes "is_sorted_outer arr i (size xs) h" "i < size xs"
@@ -90,6 +132,7 @@ proof-
   have "case execute (forMu [0..<i] (outer_loop arr (size xs))) h of (_,h') \<Rightarrow> sorted (take i (get_over arr h'))"
     using assms (1)
     apply (simp add: is_sorted_outer_def)
+    apply auto
     done
 
   have "\<And>h'. sorted (take i (get_over arr h')) \<Longrightarrow> case execute (outer_loop arr (size xs) i) h' of (_,h'') \<Rightarrow> sorted (take (i+1) (get_over arr h''))"
@@ -131,7 +174,7 @@ proof-
     by simp
   hence "(case execute (selection_sort arr) h' of (_,h') \<Rightarrow> sorted (take (size xs) (get_over arr h')))"
     apply (simp add: is_sorted_outer_def selection_sort_as_outer_loop)
-    by (metis \<open>size_of_mvector arr = length xs\<close>)
+     (metis \<open>size_of_mvector arr = length xs\<close>)
   hence "(case execute (selection_sort arr) h' of (_,h') \<Rightarrow> sorted (get_over arr h'))"
     by (simp add: \<open>\<And>h. take (length xs) (get_over arr h) = get_over arr h\<close>)
   hence Y: "case execute (do { selection_sort arr; to_list arr }) h' of (rs,_) \<Rightarrow> sorted rs"
@@ -168,11 +211,19 @@ lemma outer_loop_as_inner_loop: "outer_loop arr n i = (do {
 definition inner_inv where
   "inner_inv arr n i min_ref j h = (\<forall>k. i \<le> k \<and> k \<le> j \<longrightarrow> IO.get h min_ref \<le> MVector.get_at h arr k)"
 
+lemma outer_loop_sorted:
+  assumes "sorted (take i (get_over arr h'))"
+  shows "case execute (outer_loop arr (size xs) i) h' of (_,h'') \<Rightarrow> sorted (take (i+1) (get_over arr h''))"
+proof-
+  have ""
+
 lemma inner_loop_invariant:
   assumes "n = size_of_mvector arr"
   and "\<And>j. \<lbrakk> inner_inv arr n i min_ref j h; j < n \<rbrakk> \<Longrightarrow> inner_inv arr n i min_ref (j+1) h"
   shows "inner_inv arr n i min_ref n h"
   using forM_invariant [of _ h "[i..<n]"]
   sorry
+*)
+
 
 end

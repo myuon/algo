@@ -18,29 +18,13 @@ instance bool :: heap ..
 instance nat :: heap ..
 instance int :: heap ..
 
-datatype addr = Addr nat
-
-instance addr :: ord
-  by (rule Orderings.class.Orderings.ord.of_class.intro)
-
-instance addr :: plus
-  by (rule Groups.class.Groups.plus.of_class.intro)
-
-instance addr :: minus
-  by (rule Groups.class.Groups.minus.of_class.intro)
+type_synonym addr = nat
 
 record heap = 
   memory :: "addr \<Rightarrow> nat"
   lim :: addr
 
 datatype 'a ref = Ref addr
-
-primrec nat_of_addr where
-  "nat_of_addr (Addr n) = n"
-
-lemma nat_of_addr_inj [simp]:
-  "nat_of_addr r = nat_of_addr r' \<longleftrightarrow> r = r'"
-  by (cases r, cases r') simp_all
 
 primrec addr_of_ref :: "'a ref \<Rightarrow> addr" where
   "addr_of_ref (Ref r) = r"
@@ -50,11 +34,11 @@ lemma addr_of_ref_inj [simp]:
   by (cases r, cases r') simp_all
 
 primrec nat_of_ref :: "'a ref \<Rightarrow> nat" where
-  "nat_of_ref (Ref r) = (case r of Addr a \<Rightarrow> a)"
+  "nat_of_ref (Ref r) = r"
 
 instance ref :: (type) countable
   apply (rule countable_classI [of nat_of_ref])
-  apply (metis addr.case addr.exhaust nat_of_ref.simps ref.exhaust)
+  apply (metis nat_of_ref.simps ref.exhaust)
   done
 
 instance ref :: (type) heap ..
@@ -129,6 +113,18 @@ fun whenM :: "bool io \<Rightarrow> unit io \<Rightarrow> unit io" where
 lemma execute_bind: "execute (m \<bind> k) h = (case (execute m h) of (val,h') \<Rightarrow> execute (k val) h')"
   by (simp add: IO.bind_def)
 
+lemma effect_bind:
+  assumes "effect (m \<bind> k) h h' r"
+  obtains h'' a where "effect m h h'' a" "effect (k a) h'' h' r"
+  using assms
+  apply (simp add: effect_def execute_bind)
+  by (metis case_prod_beta prod.exhaust_sel)
+
+lemma effect_return_unit [simp]:
+  assumes "effect (return ()) h h' ()"
+  shows "h' = h"
+  by (metis assms effectE execute.simps return_def snd_conv)
+
 lemma forMu_nil [simp]: "execute (forMu [] p) h = ((),h)"
   by (simp add: return_def)
 
@@ -157,7 +153,7 @@ definition set :: "'a::heap ref \<Rightarrow> 'a \<Rightarrow> heap \<Rightarrow
   "set r v h = h \<lparr> memory := (\<lambda>i. if i = addr_of_ref r then to_nat v else memory h i) \<rparr>"
 
 definition alloc :: "'a \<Rightarrow> heap \<Rightarrow> 'a::heap ref \<times> heap" where
-  "alloc v h = (let l = lim h; r = Ref l in (r, set r v (h \<lparr> lim := lim h + Addr 1 \<rparr>)))"
+  "alloc v h = (let l = lim h; r = Ref l in (r, set r v (h \<lparr> lim := lim h + 1 \<rparr>)))"
 
 definition get :: "heap \<Rightarrow> 'a::heap ref \<Rightarrow> 'a" where
   "get h = from_nat \<circ> memory h \<circ> addr_of_ref"
