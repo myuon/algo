@@ -129,7 +129,7 @@ lemma outer_loop_find_min_as_inner_loop:
   done
 
 definition inner_loop_invariant where
-  "inner_loop_invariant arr i n min_ref j h = (get_at h arr (IO.get h min_ref) = Min (set (map (get_at h arr) [i+1..<j])))"
+  "inner_loop_invariant arr i n min_ref j h = (get_at h arr (IO.get h min_ref) = Min (set (map (get_at h arr) [i..<j])))"
 
 (*
 lemma execute_inner_loop: "execute (inner_loop arr n i min_ref j) h = ((), if get_at h arr (j+1) < get_at h arr (IO.get h min_ref) then IO.set min_ref j h else h)"
@@ -143,48 +143,86 @@ lemma execute_if: "execute (if b then p else q) h = (if b then execute p h else 
   by simp
 
 lemma effect_inner_loop:
+  fixes arr :: "nat mvector"
   assumes "effect (inner_loop arr i n min_ref j) h h' ()"
-  shows "get_at h arr (IO.get h' min_ref) = min (get_at h arr (IO.get h' min_ref)) (get_at h arr j)"
+  shows "get_at h' arr (IO.get h' min_ref) = min (get_at h' arr (IO.get h min_ref)) (get_at h' arr j)"
+  and "\<And>i. get_at h arr i = get_at h' arr i"
   using assms
   apply (simp add: effect_def inner_loop_def)
   apply (simp add: execute_bind execute_read execute_lookup)
   apply (simp add: execute_if)
+  sorry
+(*
 proof-
   assume X: "(if get_at h arr j < get_at h arr (IO.get h min_ref) then execute (min_ref := j) h else execute (return ()) h) = ((), h')"
 
-  {
-    assume "get_at h arr j < get_at h arr (IO.get h min_ref)"
+  { assume "get_at h arr j < get_at h arr (IO.get h min_ref)"
     hence "((), h') = execute (min_ref := j) h"
       using X by simp
     hence "h' = IO.set min_ref j h"
       by (simp add: execute_update)
-    hence "get_at h arr (IO.get h' min_ref) = min (get_at h arr (IO.get h' min_ref)) (get_at h arr j)"
-      apply (simp)
-      by (simp add: min_def_raw)
+    hence "get_at h' arr (IO.get h' min_ref) = min (get_at h' arr (IO.get h min_ref)) (get_at h' arr j)"
+      apply simp
+
   }
-  hence "get_at h arr j < get_at h arr (IO.get h min_ref) \<Longrightarrow> get_at h arr (IO.get h' min_ref) = min (get_at h arr (IO.get h' min_ref)) (get_at h arr j)"
+  hence p: "get_at h arr j < get_at h arr (IO.get h min_ref) \<Longrightarrow> get_at h' arr (IO.get h' min_ref) = min (get_at h' arr (IO.get h' min_ref)) (get_at h' arr j)"
     by simp
 
-  {
-    assume "get_at h arr j \<ge> get_at h arr (IO.get h min_ref)"
+  { assume "\<not> (get_at h arr j < get_at h arr (IO.get h min_ref))"
     hence "((), h') = execute (return ()) h"
-      using X sorry
+      using X by auto
+    hence "h' = h"
+      using forMu_nil by auto
   }
+  hence q: "\<not> (get_at h arr j < get_at h arr (IO.get h min_ref)) \<Longrightarrow> get_at h' arr (IO.get h' min_ref) = min (get_at h arr (IO.get h min_ref)) (get_at h arr j)"
+    by simp
 
-  show "get_at h arr (IO.get h' min_ref) = min (get_at h arr (IO.get h' min_ref)) (get_at h arr j)"
-    sorry
+  show "get_at h' arr (IO.get h' min_ref) = min (get_at h' arr (IO.get h min_ref)) (get_at h' arr j)"
+    using p q by auto
 qed
+*)
 
 lemma inner_loop_invariant_step:
+  fixes arr :: "nat mvector"
   assumes "inner_loop_invariant arr i n min_ref j h"
   and "effect (inner_loop arr i n min_ref j) h h' ()"
+  and "i < j"
   shows "inner_loop_invariant arr i n min_ref (j+1) h'"
 proof-
-  have "get_at h arr (IO.get h' min_ref) = min (Min (set (map (get_at h arr) [i..<j]))) (get_at h arr (j+1))"
-    sorry
-
-  sorry
+  have "get_at h arr (IO.get h min_ref) = Min (set (map (get_at h arr) [i..<j]))"
+    by (meson assms(1) inner_loop_invariant_def)
+  have "get_at h' arr (IO.get h' min_ref) = min (get_at h arr (IO.get h min_ref)) (get_at h arr j)"
+    using assms(2) effect_inner_loop(1) effect_inner_loop(2) by fastforce
+  also have "\<dots> = min (Min (set (map (get_at h arr) [i..<j]))) (get_at h arr j)"
+    by (simp add: \<open>get_at h arr (IO.get h min_ref) = Min (set (map (get_at h arr) [i..<j]))\<close>)
+  also have "\<dots> = Min (set (get_at h arr j # map (get_at h arr) [i..<j]))"
+  proof-
+    { fix f :: "nat \<Rightarrow> nat" and xs and x
+      have "xs \<noteq> [] \<Longrightarrow> min (Min (set (map f xs))) (f x) = Min (set (f x # map f xs))"
+        apply (induct xs arbitrary: x)
+        apply auto
+        done
+    }
+    have "\<And>(f :: nat \<Rightarrow> nat) xs j. xs \<noteq> [] \<Longrightarrow> min (Min (set (map f xs))) (f j) = Min (set (f j # map f xs))"
+      by simp
+    thus ?thesis
+      by (simp add: assms(3))
+  qed
+  also have "\<dots> = Min (set (map (get_at h arr) [i..<j] @ [get_at h arr j]))"
+    by auto
+  also have "\<dots> = Min (set (map (get_at h arr) ([i..<j] @ [j])))"
+    by auto
+  also have "\<dots> = Min (set (map (get_at h arr) [i..<j+1]))"
+    using assms(3) by auto
+  also have "\<dots> = Min (set (map (get_at h' arr) [i..<j+1]))"
+    by (metis assms(2) effect_inner_loop(2) map_cong)
+  finally have "get_at h' arr (IO.get h' min_ref) = Min (set (map (get_at h' arr) [i..<j+1]))"
+    by auto
+  thus ?thesis
+    unfolding inner_loop_invariant_def
+    by simp
 qed
+
 (*
 lemma outer_loop_invariant:
   assumes "n = size (get_over arr h)"
