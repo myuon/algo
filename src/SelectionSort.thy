@@ -82,17 +82,9 @@ definition outer_loop_find_min where
     ! min_ref
   })"
 
-lemma outer_loop_find_min_finds_min_index:
-  assumes "effect (outer_loop_find_min arr n i) h h' r"
-  shows "get_at h' arr r = Min (set (map (get_at h' arr) [i..<n]))"
-  sorry
-
 lemma outer_loop_as_find_min_and_swap:
   "outer_loop arr n i = outer_loop_find_min arr n i \<bind> (\<lambda>m. swap arr i m)"
   by (simp add: outer_loop_def outer_loop_find_min_def)
-
-definition outer_loop_invariant where
-  "outer_loop_invariant arr i n h = (sorted (take i (get_over arr h)) \<and> get_at h arr i = Min (set (map (get_at h arr) [i+1..<n])))"
 
 definition inner_loop where
   "inner_loop arr n i min_ref j = (do {
@@ -113,9 +105,6 @@ lemma outer_loop_find_min_as_inner_loop:
 
 definition inner_loop_invariant where
   "inner_loop_invariant arr i n min_ref j h = (present_in arr (IO.get h min_ref) \<and> get_at h arr (IO.get h min_ref) = Min (set (map (get_at h arr) [i..<j])))"
-
-lemma execute_if: "execute (if b then p else q) h = (if b then execute p h else execute q h)"
-  by simp
 
 lemma effect_inner_loop_fixed_get_at:
   fixes arr :: "nat mvector"
@@ -332,22 +321,19 @@ proof-
     by (rule h, rule assms)
 qed
 
+definition outer_loop_invariant where
+  "outer_loop_invariant arr i n h = (sorted (take i (get_over arr h)) \<and> get_at h arr i = Min (set (map (get_at h arr) [i+1..<n])))"
+
+lemma outer_loop_find_min_finds_min_index:
+  assumes "effect (outer_loop_find_min arr n i) h h' r"
+  shows "get_at h' arr r = Min (set (map (get_at h' arr) [i..<n]))"
+  sorry
+
 lemma outer_loop_invariant_step:
   assumes "outer_loop_invariant arr i n h"
   and "effect (outer_loop arr n i) h h' ()"
   shows "outer_loop_invariant arr (i+1) n h'"
-proof-
-  obtain h1 r where "effect (outer_loop_find_min arr n i) h h1 r" "effect (swap arr i r) h1 h' ()"
-    by (metis assms(2) effect_bind outer_loop_as_find_min_and_swap)
-  hence "get_at h1 arr r = Min (set (map (get_at h1 arr) [i..<n]))"
-    using outer_loop_find_min_finds_min_index by blast
-  hence "get_at h' arr i = Min (set (map (get_at h1 arr) [i..<n]))"
-    sorry
-
-  show ?thesis
-    sorry
-qed
-
+  sorry
 
 (*
 lemma outer_loop_invariant:
