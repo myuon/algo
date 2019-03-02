@@ -197,6 +197,20 @@ lemma execute_lookup: "execute (lookup r) h = (get h r, h)"
 lemma execute_update: "execute (update r v) h = ((), set r v h)"
   by (simp add: update_def)
 
+definition noteq :: "'a::heap ref \<Rightarrow> 'b::heap ref \<Rightarrow> bool" (infix "=!=" 70) where
+  "r =!= s \<longleftrightarrow> addr_of_ref r \<noteq> addr_of_ref s"
+
+lemma noteq_sym: "r =!= s \<Longrightarrow> s =!= r"
+  apply (simp add: noteq_def)
+  done
+
+lemma noteq_set_get:
+  assumes "r =!= s"
+  shows "get (set r val h) s = get h s"
+  apply (auto simp add: noteq_def IO.set_def get_def)
+  using assms apply (simp add: noteq_def)
+  done
+
 hide_const (open) present get set alloc
 
 end

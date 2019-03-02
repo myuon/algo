@@ -93,7 +93,7 @@ lemma outer_loop_as_find_min_and_swap:
   by (simp add: outer_loop_def outer_loop_find_min_def)
 
 definition outer_loop_invariant where
-  "outer_loop_invariant arr i n h = (\<exists>h'. effect (outer_loop arr n i) h h' () \<and> sorted (take i (get_over arr h')) \<and> get_at h' arr i = Min (set (map (get_at h' arr) [i+1..<n])))"
+  "outer_loop_invariant arr i n h = (sorted (take i (get_over arr h)) \<and> get_at h arr i = Min (set (map (get_at h arr) [i+1..<n])))"
 
 lemma outer_loop_invariant_step:
   assumes "outer_loop_invariant arr i n h"
@@ -104,8 +104,8 @@ proof-
     by (metis assms(2) effect_bind outer_loop_as_find_min_and_swap)
   hence "get_at h1 arr r = Min (set (map (get_at h1 arr) [i..<n]))"
     using outer_loop_find_min_finds_min_index by blast
-  hence "get_at h' arr i = Min (set (map (get_at h' arr) [i+1..<n]))"
-    by (metis assms(1) assms(2) effectE outer_loop_invariant_def prod.sel(2))
+  hence "get_at h' arr i = Min (set (map (get_at h1 arr) [i..<n]))"
+    sorry
 
   show ?thesis
     sorry
@@ -152,6 +152,7 @@ lemma effect_inner_loop:
   apply (simp add: execute_bind execute_read execute_lookup)
   apply (simp add: execute_if)
   sorry
+
 (*
 proof-
   assume X: "(if get_at h arr j < get_at h arr (IO.get h min_ref) then execute (min_ref := j) h else execute (return ()) h) = ((), h')"
