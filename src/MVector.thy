@@ -302,8 +302,8 @@ proof-
     by simp
 qed
 
-definition ref_in :: "'a::heap ref \<Rightarrow> 'b::heap mvector \<Rightarrow> bool" where
-  "ref_in r arr = (\<forall>i\<in>set [0..<size_of_mvector arr]. r =!= (Ref (addr_of_mvector arr + i) :: 'b::heap ref))"
+definition ref_not_in :: "'a::heap ref \<Rightarrow> 'b::heap mvector \<Rightarrow> bool" where
+  "ref_not_in r arr = (\<forall>i\<in>set [0..<size_of_mvector arr]. r =!= (Ref (addr_of_mvector arr + i) :: 'b::heap ref))"
 
 lemma get_at_as_ref:
   "get_at h arr i = IO.get h (Ref (addr_of_mvector arr + i))"
@@ -315,21 +315,21 @@ lemma set_at_as_ref:
   apply (simp add: set_at_def IO.set_def)
   done
 
-lemma ref_in_not_affect_ref:
-  assumes "ref_in r arr"
+lemma ref_not_in_irrelative:
+  assumes "ref_not_in r arr"
   and "i \<in> set [0..<size_of_mvector arr]"
   shows "get_at (IO.set r val h) arr i = get_at h arr i"
   and "IO.get (set_at arr i val h) r = IO.get h r"
 proof-
   have "r =!= Ref (addr_of_mvector arr + i)"
-    by (metis addr_of_ref.simps assms(1) assms(2) noteq_def ref_in_def)
+    by (metis addr_of_ref.simps assms(1) assms(2) noteq_def ref_not_in_def)
   show "get_at (IO.set r val h) arr i = get_at h arr i"
     apply (simp add: get_at_as_ref)
     apply (simp add: \<open>r =!= Ref (addr_of_mvector arr + i)\<close> noteq_set_get)
     done
 next
   have "r =!= Ref (addr_of_mvector arr + i)"
-    by (metis addr_of_ref.simps assms(1) assms(2) noteq_def ref_in_def)
+    by (metis addr_of_ref.simps assms(1) assms(2) noteq_def ref_not_in_def)
   show "IO.get (set_at arr i val h) r = IO.get h r"
     apply (simp add: set_at_as_ref)
     apply (simp add: \<open>r =!= Ref (addr_of_mvector arr + i)\<close> noteq_set_get noteq_sym)
