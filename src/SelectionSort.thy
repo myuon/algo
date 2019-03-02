@@ -104,7 +104,7 @@ lemma outer_loop_find_min_as_inner_loop:
   done
 
 definition inner_loop_invariant where
-  "inner_loop_invariant arr i n min_ref j h = (present_in arr (IO.get h min_ref) \<and> get_at h arr (IO.get h min_ref) = Min (set (map (get_at h arr) [i..<j])))"
+  "inner_loop_invariant arr n i min_ref j h = (present_in arr (IO.get h min_ref) \<and> get_at h arr (IO.get h min_ref) = Min (set (map (get_at h arr) [i..<j])))"
 
 lemma effect_inner_loop_fixed_get_at:
   fixes arr :: "nat mvector"
@@ -127,14 +127,14 @@ qed
 
 lemma effect_inner_loop:
   fixes arr :: "nat mvector"
-  assumes "effect (inner_loop arr i n min_ref j) h h' ()"
+  assumes "effect (inner_loop arr n i min_ref j) h h' ()"
   and "ref_not_in min_ref arr"
   and "present_in arr i"
   and "present_in arr j"
   and "present_in arr (IO.get h min_ref)"
   shows "get_at h' arr (IO.get h' min_ref) = min (get_at h' arr (IO.get h min_ref)) (get_at h' arr j)"
 proof-
-  have "effect (inner_loop arr i n min_ref j) h h' ()"
+  have "effect (inner_loop arr n i min_ref j) h h' ()"
     by (simp add: assms)
   hence h: "h' = (if get_at h arr j < get_at h arr (IO.get h min_ref) then IO.set min_ref j h else h)"
     apply (simp add: effect_def inner_loop_def execute_bind execute_read execute_lookup)
@@ -151,13 +151,13 @@ qed
 
 lemma inner_loop_invariant_step:
   fixes arr :: "nat mvector"
-  assumes "inner_loop_invariant arr i n min_ref j h"
-  and "effect (inner_loop arr i n min_ref j) h h' ()"
+  assumes "inner_loop_invariant arr n i min_ref j h"
+  and "effect (inner_loop arr n i min_ref j) h h' ()"
   and "i < j"
   and "present_in arr i"
   and "present_in arr j"
   and "ref_not_in min_ref arr"
-  shows "inner_loop_invariant arr i n min_ref (j+1) h'"
+  shows "inner_loop_invariant arr n i min_ref (j+1) h'"
 proof-
   have "get_at h arr (IO.get h min_ref) = Min (set (map (get_at h arr) [i..<j]))"
     by (meson assms(1) inner_loop_invariant_def)
@@ -165,7 +165,7 @@ proof-
     using assms(2) assms(5) assms(6) effect_inner_loop_fixed_get_at by fastforce
   have "present_in arr (IO.get h' min_ref)"
   proof-
-    have "effect (inner_loop arr i n min_ref j) h h' ()"
+    have "effect (inner_loop arr n i min_ref j) h h' ()"
       by (simp add: assms)
     hence h: "h' = (if get_at h arr j < get_at h arr (IO.get h min_ref) then IO.set min_ref j h else h)"
       apply (simp add: effect_def inner_loop_def execute_bind execute_read execute_lookup)
@@ -253,40 +253,40 @@ lemma inner_loop_invariant:
   fixes arr :: "nat mvector"
   assumes "present_in arr i"
   and "ref_not_in min_ref arr"
-  and "effect (forMu [i+1..<n] (inner_loop arr i n min_ref)) h h' ()"
-  and "inner_loop_invariant arr i n min_ref (i+1) h"
+  and "effect (forMu [i+1..<n] (inner_loop arr n i min_ref)) h h' ()"
+  and "inner_loop_invariant arr n i min_ref (i+1) h"
   and "n = size_of_mvector arr"
   and "i < n"
-  shows "inner_loop_invariant arr i n min_ref n h'"
+  shows "inner_loop_invariant arr n i min_ref n h'"
 proof-
   { fix j
-    have "\<And>h'. j+i+1 \<le> n \<Longrightarrow> effect (forMu [i+1..<j+i+1] (inner_loop arr i n min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr i n min_ref (j+i+1) h'"
+    have "\<And>h'. j+i+1 \<le> n \<Longrightarrow> effect (forMu [i+1..<j+i+1] (inner_loop arr n i min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr n i min_ref (j+i+1) h'"
       apply (induct "j")
       apply (simp add: effect_def return_def)
       using assms apply simp
     proof-
       fix j h'
-      assume hyp: "\<And>h'. j + i + 1 \<le> n \<Longrightarrow> effect (forMu [i + 1..<j + i + 1] (inner_loop arr i n min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr i n min_ref (j + i + 1) h'"
+      assume hyp: "\<And>h'. j + i + 1 \<le> n \<Longrightarrow> effect (forMu [i + 1..<j + i + 1] (inner_loop arr n i min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr n i min_ref (j + i + 1) h'"
       and index_bound: "Suc j + i + 1 \<le> n"
-      and "effect (forMu [i + 1..<Suc j + i + 1] (inner_loop arr i n min_ref)) h h' ()"
+      and "effect (forMu [i + 1..<Suc j + i + 1] (inner_loop arr n i min_ref)) h h' ()"
 
-      have "effect (forMu ([i+1..<j+i+1] @ [j+i+1]) (inner_loop arr i n min_ref)) h h' ()"
-        using \<open>effect (forMu [i + 1..<Suc j + i + 1] (inner_loop arr i n min_ref)) h h' ()\<close> by auto
-      hence "effect (forMu [i+1..<j+i+1] (inner_loop arr i n min_ref) \<bind> (\<lambda>_. forMu [j+i+1] (inner_loop arr i n min_ref))) h h' ()"
+      have "effect (forMu ([i+1..<j+i+1] @ [j+i+1]) (inner_loop arr n i min_ref)) h h' ()"
+        using \<open>effect (forMu [i + 1..<Suc j + i + 1] (inner_loop arr n i min_ref)) h h' ()\<close> by auto
+      hence "effect (forMu [i+1..<j+i+1] (inner_loop arr n i min_ref) \<bind> (\<lambda>_. forMu [j+i+1] (inner_loop arr n i min_ref))) h h' ()"
         using effect_forMu_app by blast
-      hence "effect (forMu [i+1..<j+i+1] (inner_loop arr i n min_ref) \<bind> (\<lambda>_. inner_loop arr i n min_ref (j+i+1))) h h' ()"
+      hence "effect (forMu [i+1..<j+i+1] (inner_loop arr n i min_ref) \<bind> (\<lambda>_. inner_loop arr n i min_ref (j+i+1))) h h' ()"
       proof-
-        have h: "forMu [j+i+1] (inner_loop arr i n min_ref) = inner_loop arr i n min_ref (j+i+1)"
+        have h: "forMu [j+i+1] (inner_loop arr n i min_ref) = inner_loop arr n i min_ref (j+i+1)"
           by auto
-        show "effect (forMu [i + 1..<j + i + 1] (inner_loop arr i n min_ref) \<bind> (\<lambda>_. forMu [j + i + 1] (inner_loop arr i n min_ref))) h h' ()
-             \<Longrightarrow> effect (forMu [i + 1..<j + i + 1] (inner_loop arr i n min_ref) \<bind> (\<lambda>_. inner_loop arr i n min_ref (j + i + 1))) h h' ()"
+        show "effect (forMu [i + 1..<j + i + 1] (inner_loop arr n i min_ref) \<bind> (\<lambda>_. forMu [j + i + 1] (inner_loop arr n i min_ref))) h h' ()
+             \<Longrightarrow> effect (forMu [i + 1..<j + i + 1] (inner_loop arr n i min_ref) \<bind> (\<lambda>_. inner_loop arr n i min_ref (j + i + 1))) h h' ()"
           apply (simp add: h)
           done
       qed
-      then obtain h'' where h'': "effect (forMu [i+1..<j+i+1] (inner_loop arr i n min_ref)) h h'' ()" "effect (inner_loop arr i n min_ref (j+i+1)) h'' h' ()"
+      then obtain h'' where h'': "effect (forMu [i+1..<j+i+1] (inner_loop arr n i min_ref)) h h'' ()" "effect (inner_loop arr n i min_ref (j+i+1)) h'' h' ()"
         using effect_bind old.unit.exhaust by force
 
-      have "inner_loop_invariant arr i n min_ref ((j+i+1)+1) h'"
+      have "inner_loop_invariant arr n i min_ref ((j+i+1)+1) h'"
         apply (rule inner_loop_invariant_step)
         apply (rule hyp)
         using index_bound apply simp
@@ -303,21 +303,21 @@ proof-
           by (simp add: present_in_def assms)
       qed
 
-      show "inner_loop_invariant arr i n min_ref (Suc j + i + 1) h'"
+      show "inner_loop_invariant arr n i min_ref (Suc j + i + 1) h'"
         unfolding inner_loop_invariant_def
-        using \<open>inner_loop_invariant arr i n min_ref (j + i + 1 + 1) h'\<close> inner_loop_invariant_def by fastforce
+        using \<open>inner_loop_invariant arr n i min_ref (j + i + 1 + 1) h'\<close> inner_loop_invariant_def by fastforce
     qed
   }
-  hence "\<And>j. \<And>h'. j+i+1 \<le> n \<Longrightarrow> effect (forMu [i+1..<j+i+1] (inner_loop arr i n min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr i n min_ref (j+i+1) h'"
+  hence "\<And>j. \<And>h'. j+i+1 \<le> n \<Longrightarrow> effect (forMu [i+1..<j+i+1] (inner_loop arr n i min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr n i min_ref (j+i+1) h'"
     by simp
 
   obtain j where "j+i+1 = n"
     using assms(6)
     by (metis add.commute discrete le_iff_add semiring_normalization_rules(25))
 
-  hence h: "\<And>h'. effect (forMu [i+1..<n] (inner_loop arr i n min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr i n min_ref n h'"
-    using \<open>\<And>j h'. \<lbrakk>j + i + 1 \<le> n; effect (forMu [i + 1..<j + i + 1] (inner_loop arr i n min_ref)) h h' ()\<rbrakk> \<Longrightarrow> inner_loop_invariant arr i n min_ref (j + i + 1) h'\<close> by blast
-  show "inner_loop_invariant arr i n min_ref n h'"
+  hence h: "\<And>h'. effect (forMu [i+1..<n] (inner_loop arr n i min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr n i min_ref n h'"
+    using \<open>\<And>j h'. \<lbrakk>j + i + 1 \<le> n; effect (forMu [i + 1..<j + i + 1] (inner_loop arr n i min_ref)) h h' ()\<rbrakk> \<Longrightarrow> inner_loop_invariant arr n i min_ref (j + i + 1) h'\<close> by blast
+  show "inner_loop_invariant arr n i min_ref n h'"
     by (rule h, rule assms)
 qed
 
@@ -330,10 +330,56 @@ lemma outer_loop_find_min_finds_min_index:
   sorry
 
 lemma outer_loop_invariant_step:
+  fixes arr :: "nat mvector"
   assumes "outer_loop_invariant arr i n h"
   and "effect (outer_loop arr n i) h h' ()"
+  and "present_in arr i"
+  and "\<And>i. i < size_of_mvector arr \<Longrightarrow> IO.present h (Ref (addr_of_mvector arr + i))"
+  and "i < n"
   shows "outer_loop_invariant arr (i+1) n h'"
-  sorry
+proof-
+  obtain h1 m where
+    "effect (outer_loop_find_min arr n i) h h1 m"
+    "effect (swap arr i m) h1 h' ()"
+    by (metis assms(2) effect_bind outer_loop_as_find_min_and_swap)
+
+  obtain h2 min_ref where
+    h2: "(min_ref,h2) = IO.alloc i h"
+    "m = IO.get h1 min_ref"
+    "effect (forMu [i+1..<n] (inner_loop arr n i min_ref)) h2 h1 ()"
+  proof-
+    obtain h2 min_ref where
+      "effect (ref i) h h2 min_ref"
+      "effect (forMu [i+1..<n] (inner_loop arr n i min_ref) \<bind> (\<lambda>_. ! min_ref)) h2 h1 m"
+      by (smt \<open>effect (outer_loop_find_min arr n i) h h1 m\<close> effect_bind outer_loop_find_min_as_inner_loop)
+    hence p: "(min_ref,h2) = IO.alloc i h"
+      by (simp add: effect_def execute_ref)
+    obtain h3 where
+      r: "effect (forMu [i+1..<n] (inner_loop arr n i min_ref)) h2 h3 ()"
+      "effect (! min_ref) h3 h1 m"
+      using \<open>effect (forMu [i + 1..<n] (inner_loop arr n i min_ref) \<bind> (\<lambda>_. !min_ref)) h2 h1 m\<close> effect_bind by force
+    hence q: "h3 = h1" "m = IO.get h1 min_ref"
+      apply (metis Pair_inject effectE execute_lookup)
+      apply (metis Pair_inject \<open>\<And>thesis. (\<And>h3. \<lbrakk>effect (forMu [i + 1..<n] (inner_loop arr n i min_ref)) h2 h3 (); effect (!min_ref) h3 h1 m\<rbrakk> \<Longrightarrow> thesis) \<Longrightarrow> thesis\<close> effectE execute_lookup)
+      done
+    assume h: "\<And>min_ref h2. (min_ref, h2) = IO.alloc i h \<Longrightarrow> m = IO.get h1 min_ref \<Longrightarrow> effect (forMu [i + 1..<n] (inner_loop arr n i min_ref)) h2 h1 () \<Longrightarrow> thesis"
+    show ?thesis
+      using h [OF p q(2)] r(1) q(1)
+      apply auto
+      done
+  qed
+
+  have "inner_loop_invariant arr n i min_ref n h1"
+    apply (rule inner_loop_invariant)
+    apply (rule assms)
+    apply (rule alloc_ref_not_in, rule h2(1) [symmetric], rule assms, simp)
+    apply (rule h2)
+
+(*
+  assumes "IO.alloc v h = (r,h')"
+  and "\<And>i. i < size_of_mvector arr \<Longrightarrow> IO.present h (Ref (addr_of_mvector arr + i))"
+  shows "ref_not_in r arr"
+*)
 
 (*
 lemma outer_loop_invariant:

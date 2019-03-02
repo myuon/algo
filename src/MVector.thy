@@ -339,4 +339,13 @@ next
     done
 qed
 
+lemma alloc_ref_not_in:
+  assumes "IO.alloc v h = (r,h')"
+  and "\<And>i. i < size_of_mvector arr \<Longrightarrow> IO.present h (Ref (addr_of_mvector arr + i))"
+  shows "ref_not_in r arr"
+  using assms
+  apply (simp add: IO.alloc_def IO.present_def ref_not_in_def)
+  apply (metis Pair_inject addr_of_ref.simps atLeast0LessThan lessThan_iff less_irrefl_nat noteq_def)
+  done
+
 end
