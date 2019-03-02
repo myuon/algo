@@ -21,13 +21,12 @@ proof-
 qed
 
 lemma forM_invariant:
-  assumes "P 0 ((),h)"
-  and "\<And>i h. \<lbrakk> P i (execute (forMu (take i xs) program) h); i < size xs \<rbrakk> \<Longrightarrow> P (i+1) (execute (forMu (take (i+1) xs) program) h)"
-  shows "P (size xs) (execute (forMu xs program) h)"
+  assumes "P (return ())"
+  and "\<And>i. \<lbrakk> P (forMu (take i xs) program); i < size xs \<rbrakk> \<Longrightarrow> P (forMu (take (i+1) xs) program)"
+  shows "P (forMu xs program)"
   apply (induct xs rule: take_induct)
-  apply (simp add: return_def assms(1))
-  apply (metis Suc_eq_plus1 Suc_leI assms(2) length_take min.absorb2 nat_less_le)
-  done
+  using assms(1) apply (simp add: return_def)
+  using assms(2) by blast
 
 definition selection_sort :: "nat mvector \<Rightarrow> unit io" where
   "selection_sort arr = (let n = size_of_mvector arr in forMu [0..<n] (\<lambda>i. do {
@@ -95,22 +94,6 @@ lemma outer_loop_as_find_min_and_swap:
 definition outer_loop_invariant where
   "outer_loop_invariant arr i n h = (sorted (take i (get_over arr h)) \<and> get_at h arr i = Min (set (map (get_at h arr) [i+1..<n])))"
 
-lemma outer_loop_invariant_step:
-  assumes "outer_loop_invariant arr i n h"
-  and "effect (outer_loop arr n i) h h' ()"
-  shows "outer_loop_invariant arr (i+1) n h'"
-proof-
-  obtain h1 r where "effect (outer_loop_find_min arr n i) h h1 r" "effect (swap arr i r) h1 h' ()"
-    by (metis assms(2) effect_bind outer_loop_as_find_min_and_swap)
-  hence "get_at h1 arr r = Min (set (map (get_at h1 arr) [i..<n]))"
-    using outer_loop_find_min_finds_min_index by blast
-  hence "get_at h' arr i = Min (set (map (get_at h1 arr) [i..<n]))"
-    sorry
-
-  show ?thesis
-    sorry
-qed
-
 definition inner_loop where
   "inner_loop arr n i min_ref j = (do {
     valJ \<leftarrow> read arr j;
@@ -130,14 +113,6 @@ lemma outer_loop_find_min_as_inner_loop:
 
 definition inner_loop_invariant where
   "inner_loop_invariant arr i n min_ref j h = (present_in arr (IO.get h min_ref) \<and> get_at h arr (IO.get h min_ref) = Min (set (map (get_at h arr) [i..<j])))"
-
-(*
-lemma execute_inner_loop: "execute (inner_loop arr n i min_ref j) h = ((), if get_at h arr (j+1) < get_at h arr (IO.get h min_ref) then IO.set min_ref j h else h)"
-  apply (simp add: inner_loop_def)
-  apply (simp add: execute_bind execute_read execute_lookup)
-  apply (simp add: execute_update return_def)
-  done
-*)
 
 lemma execute_if: "execute (if b then p else q) h = (if b then execute p h else execute q h)"
   by simp
@@ -284,6 +259,95 @@ proof-
     unfolding inner_loop_invariant_def
     using \<open>present_in arr (IO.get h' min_ref)\<close> by blast
 qed
+
+lemma inner_loop_invariant:
+  fixes arr :: "nat mvector"
+  assumes "present_in arr i"
+  and "ref_not_in min_ref arr"
+  and "effect (forMu [i+1..<n] (inner_loop arr i n min_ref)) h h' ()"
+  and "inner_loop_invariant arr i n min_ref (i+1) h"
+  and "n = size_of_mvector arr"
+  and "i < n"
+  shows "inner_loop_invariant arr i n min_ref n h'"
+proof-
+  { fix j
+    have "\<And>h'. j+i+1 \<le> n \<Longrightarrow> effect (forMu [i+1..<j+i+1] (inner_loop arr i n min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr i n min_ref (j+i+1) h'"
+      apply (induct "j")
+      apply (simp add: effect_def return_def)
+      using assms apply simp
+    proof-
+      fix j h'
+      assume hyp: "\<And>h'. j + i + 1 \<le> n \<Longrightarrow> effect (forMu [i + 1..<j + i + 1] (inner_loop arr i n min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr i n min_ref (j + i + 1) h'"
+      and index_bound: "Suc j + i + 1 \<le> n"
+      and "effect (forMu [i + 1..<Suc j + i + 1] (inner_loop arr i n min_ref)) h h' ()"
+
+      have "effect (forMu ([i+1..<j+i+1] @ [j+i+1]) (inner_loop arr i n min_ref)) h h' ()"
+        using \<open>effect (forMu [i + 1..<Suc j + i + 1] (inner_loop arr i n min_ref)) h h' ()\<close> by auto
+      hence "effect (forMu [i+1..<j+i+1] (inner_loop arr i n min_ref) \<bind> (\<lambda>_. forMu [j+i+1] (inner_loop arr i n min_ref))) h h' ()"
+        using effect_forMu_app by blast
+      hence "effect (forMu [i+1..<j+i+1] (inner_loop arr i n min_ref) \<bind> (\<lambda>_. inner_loop arr i n min_ref (j+i+1))) h h' ()"
+      proof-
+        have h: "forMu [j+i+1] (inner_loop arr i n min_ref) = inner_loop arr i n min_ref (j+i+1)"
+          by auto
+        show "effect (forMu [i + 1..<j + i + 1] (inner_loop arr i n min_ref) \<bind> (\<lambda>_. forMu [j + i + 1] (inner_loop arr i n min_ref))) h h' ()
+             \<Longrightarrow> effect (forMu [i + 1..<j + i + 1] (inner_loop arr i n min_ref) \<bind> (\<lambda>_. inner_loop arr i n min_ref (j + i + 1))) h h' ()"
+          apply (simp add: h)
+          done
+      qed
+      then obtain h'' where h'': "effect (forMu [i+1..<j+i+1] (inner_loop arr i n min_ref)) h h'' ()" "effect (inner_loop arr i n min_ref (j+i+1)) h'' h' ()"
+        using effect_bind old.unit.exhaust by force
+
+      have "inner_loop_invariant arr i n min_ref ((j+i+1)+1) h'"
+        apply (rule inner_loop_invariant_step)
+        apply (rule hyp)
+        using index_bound apply simp
+        apply (rule h'')
+        apply (rule h'')
+        apply simp
+        apply (simp add: assms)
+        defer
+        apply (simp add: assms)
+      proof-
+        have "j + i + 1 < n"
+          using index_bound by auto
+        thus "present_in arr (j+i+1)"
+          by (simp add: present_in_def assms)
+      qed
+
+      show "inner_loop_invariant arr i n min_ref (Suc j + i + 1) h'"
+        unfolding inner_loop_invariant_def
+        using \<open>inner_loop_invariant arr i n min_ref (j + i + 1 + 1) h'\<close> inner_loop_invariant_def by fastforce
+    qed
+  }
+  hence "\<And>j. \<And>h'. j+i+1 \<le> n \<Longrightarrow> effect (forMu [i+1..<j+i+1] (inner_loop arr i n min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr i n min_ref (j+i+1) h'"
+    by simp
+
+  obtain j where "j+i+1 = n"
+    using assms(6)
+    by (metis add.commute discrete le_iff_add semiring_normalization_rules(25))
+
+  hence h: "\<And>h'. effect (forMu [i+1..<n] (inner_loop arr i n min_ref)) h h' () \<Longrightarrow> inner_loop_invariant arr i n min_ref n h'"
+    using \<open>\<And>j h'. \<lbrakk>j + i + 1 \<le> n; effect (forMu [i + 1..<j + i + 1] (inner_loop arr i n min_ref)) h h' ()\<rbrakk> \<Longrightarrow> inner_loop_invariant arr i n min_ref (j + i + 1) h'\<close> by blast
+  show "inner_loop_invariant arr i n min_ref n h'"
+    by (rule h, rule assms)
+qed
+
+lemma outer_loop_invariant_step:
+  assumes "outer_loop_invariant arr i n h"
+  and "effect (outer_loop arr n i) h h' ()"
+  shows "outer_loop_invariant arr (i+1) n h'"
+proof-
+  obtain h1 r where "effect (outer_loop_find_min arr n i) h h1 r" "effect (swap arr i r) h1 h' ()"
+    by (metis assms(2) effect_bind outer_loop_as_find_min_and_swap)
+  hence "get_at h1 arr r = Min (set (map (get_at h1 arr) [i..<n]))"
+    using outer_loop_find_min_finds_min_index by blast
+  hence "get_at h' arr i = Min (set (map (get_at h1 arr) [i..<n]))"
+    sorry
+
+  show ?thesis
+    sorry
+qed
+
 
 (*
 lemma outer_loop_invariant:

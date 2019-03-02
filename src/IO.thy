@@ -128,11 +128,20 @@ lemma effect_return_unit [simp]:
 lemma forMu_nil [simp]: "execute (forMu [] p) h = ((),h)"
   by (simp add: return_def)
 
-lemma forMu_app:
+lemma forMu_app_return:
   "execute (forMu (as@bs) program) h = execute (do {
     _ \<leftarrow> forMu as program;
     _ \<leftarrow> forMu bs program;
     return ()
+  }) h"
+  apply (induct as arbitrary: h, simp)
+  apply (simp add: execute_bind)
+  done
+
+lemma forMu_app:
+  "execute (forMu (as@bs) program) h = execute (do {
+    _ \<leftarrow> forMu as program;
+    forMu bs program
   }) h"
   apply (induct as arbitrary: h, simp)
   apply (simp add: execute_bind)
@@ -209,6 +218,17 @@ lemma noteq_set_get:
   shows "get (set r val h) s = get h s"
   apply (auto simp add: noteq_def IO.set_def get_def)
   using assms apply (simp add: noteq_def)
+  done
+
+lemma effect_forMu_app:
+  assumes "effect (forMu (as@bs) program) h h' ()"
+  shows "effect (do {
+    _ \<leftarrow> forMu as program;
+    forMu bs program
+  }) h h' ()"
+  using assms
+  apply (simp add: effect_def)
+  apply (simp add: forMu_app)
   done
 
 hide_const (open) present get set alloc
