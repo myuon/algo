@@ -315,21 +315,24 @@ lemma set_at_as_ref:
   apply (simp add: set_at_def IO.set_def)
   done
 
+definition present_in where
+  "present_in arr n = (n \<in> set [0..<size_of_mvector arr])"
+
 lemma ref_not_in_irrelative:
   assumes "ref_not_in r arr"
-  and "i \<in> set [0..<size_of_mvector arr]"
+  and "present_in arr i"
   shows "get_at (IO.set r val h) arr i = get_at h arr i"
   and "IO.get (set_at arr i val h) r = IO.get h r"
 proof-
   have "r =!= Ref (addr_of_mvector arr + i)"
-    by (metis addr_of_ref.simps assms(1) assms(2) noteq_def ref_not_in_def)
+    by (metis addr_of_ref.simps assms(1) assms(2) noteq_def ref_not_in_def present_in_def)
   show "get_at (IO.set r val h) arr i = get_at h arr i"
     apply (simp add: get_at_as_ref)
     apply (simp add: \<open>r =!= Ref (addr_of_mvector arr + i)\<close> noteq_set_get)
     done
 next
   have "r =!= Ref (addr_of_mvector arr + i)"
-    by (metis addr_of_ref.simps assms(1) assms(2) noteq_def ref_not_in_def)
+    by (metis addr_of_ref.simps assms(1) assms(2) noteq_def ref_not_in_def present_in_def)
   show "IO.get (set_at arr i val h) r = IO.get h r"
     apply (simp add: set_at_as_ref)
     apply (simp add: \<open>r =!= Ref (addr_of_mvector arr + i)\<close> noteq_set_get noteq_sym)
