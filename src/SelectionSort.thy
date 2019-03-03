@@ -336,6 +336,7 @@ lemma outer_loop_invariant_step:
   and "present_in arr i"
   and "\<And>i. i < size_of_mvector arr \<Longrightarrow> IO.present h (Ref (addr_of_mvector arr + i))"
   and "i < n"
+  and "n = size_of_mvector arr"
   shows "outer_loop_invariant arr (i+1) n h'"
 proof-
   obtain h1 m where
@@ -374,12 +375,23 @@ proof-
     apply (rule assms)
     apply (rule alloc_ref_not_in, rule h2(1) [symmetric], rule assms, simp)
     apply (rule h2)
+    defer
+    apply (rule assms)
+    apply (rule assms)
+    apply (auto simp add: inner_loop_invariant_def)
+    using h2(1) apply (simp add: alloc_get assms)
+    using h2(1) apply (simp add: alloc_get assms)
+    done
+  hence "get_at h1 arr (IO.get h1 min_ref) = Min (set (map (get_at h1 arr) [i..<n]))"
+    by (simp add: inner_loop_invariant_def)
+  hence "get_at h1 arr m = Min (set (map (get_at h1 arr) [i..<n]))"
+    using h2(2) by blast
+  hence "get_at h' arr i = Min (set (map (get_at h1 arr) [i..<n]))"
+    sorry
+  
+  show ?thesis
+    sorry
 
-(*
-  assumes "IO.alloc v h = (r,h')"
-  and "\<And>i. i < size_of_mvector arr \<Longrightarrow> IO.present h (Ref (addr_of_mvector arr + i))"
-  shows "ref_not_in r arr"
-*)
 
 (*
 lemma outer_loop_invariant:

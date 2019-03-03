@@ -231,6 +231,10 @@ lemma effect_forMu_app:
   apply (simp add: forMu_app)
   done
 
+lemma alloc_get: "alloc v h = (r,h') \<Longrightarrow> get h' r = v"
+  apply (simp add: alloc_def get_def)
+  by (metis comp_apply get_def get_set_eq prod.sel(1) snd_conv)
+
 hide_const (open) present get set alloc
 
 end

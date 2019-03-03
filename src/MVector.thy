@@ -43,6 +43,25 @@ definition swap :: "'a::heap mvector \<Rightarrow> nat \<Rightarrow> nat \<Right
 lemma get_set_eq [simp]: "get_at (set_at r i x h) r i = x"
   by (simp add: get_at_def set_at_def)
 
+lemma set_get_get_same [simp]:
+  fixes arr :: "nat mvector" and j :: "'a::heap"
+  assumes "memory h (addr_of_mvector arr + i) = to_nat j"
+  shows "set_at arr i (get_at h arr i) h = h"
+  using assms
+  apply (simp add: set_at_def get_at_def IO.get_def)
+  apply (induct h, auto)
+  apply (rule, auto)
+proof-
+  fix memory
+  have "from_nat (to_nat j) = j"
+    by simp
+  hence p: "\<And>P. P (from_nat (to_nat j)) = P j"
+    by simp
+  show "to_nat (from_nat (to_nat j)) = to_nat j"
+    using p [of "to_nat"]
+    sorry
+qed
+
 lemma get_set_neq: "i \<noteq> j \<Longrightarrow> get_at (set_at r i x h) r j = get_at h r j"
   apply (auto simp add: get_at_def set_at_def)
   done
@@ -83,6 +102,13 @@ lemma effect_writ:
   assumes "effect (writ arr i v) h h' ()"
   shows "h' = set_at arr i v h"
   by (metis (full_types) assms effectE execute_writ snd_conv)
+
+lemma effect_swap_same:
+  assumes "effect (swap arr i i) h h' ()"
+  shows "h = h'"
+  using assms
+  apply (simp add: effect_def swap_def)
+  apply (simp add: execute_bind execute_read execute_writ)
 
 lemma effect_swap:
   assumes "effect (swap arr i j) h h' ()"
