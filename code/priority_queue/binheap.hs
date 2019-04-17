@@ -35,9 +35,9 @@ push a (PQueue k vec) = PQueue (k + 1) vec'
     )
     (i, vec)
 
-popMax :: (Ord a, Bounded a, VUM.Unbox a) => PQueue a -> (a, PQueue a)
-popMax (PQueue k vec) | k < 0     = error "size < 0"
-                      | otherwise = (uread 0 vec, PQueue (k - 1) vec')
+popMax :: (Ord a, Bounded a, VUM.Unbox a) => PQueue a -> Maybe (a, PQueue a)
+popMax (PQueue k vec) | k < 0     = Nothing
+                      | otherwise = Just (uread 0 vec, PQueue (k - 1) vec')
  where
   vec' = let v = uswap (k - 1) 0 vec in v `seq` down 0 (uread 0 vec) v
 
@@ -55,3 +55,6 @@ popMax (PQueue k vec) | k < 0     = error "size < 0"
               in  vec' `seq` f (p, vec')
     )
     (i, vec)
+
+popMax' :: (Ord a, Bounded a, VUM.Unbox a) => PQueue a -> (a, PQueue a)
+popMax' pq = maybe (error "size < 0") id $ popMax pq
