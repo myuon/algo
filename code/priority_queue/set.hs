@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- Entry k v should be unique in a queue
 
 data Entry k v = Entry k v
