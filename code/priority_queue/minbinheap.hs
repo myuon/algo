@@ -20,7 +20,7 @@ data PQueue a = PQueue Int (VUM.IOVector a)
 new :: VUM.Unbox a => Int -> PQueue a
 new s = PQueue 0 $ unsafePerformIO $ VUM.new s
 
-push :: Ord a => VUM.Unbox a => a -> PQueue a -> PQueue a
+push :: (Ord a, Bounded a) => VUM.Unbox a => a -> PQueue a -> PQueue a
 push a (PQueue k vec) = PQueue (k + 1) vec'
  where
   vec' = up k a $ uwrite k a vec
@@ -28,7 +28,7 @@ push a (PQueue k vec) = PQueue (k + 1) vec'
   up i cv vec = (\(_, v) -> v) $ fix
     ( \f (ci, vec) ->
       let pi = (ci - 1) `div` 2
-          pv = uread pi vec
+          pv = if 0 < ci then uread pi vec else minBound
       in  if 0 < ci && cv < pv
             then let vec' = uswap pi ci vec in vec' `seq` f (pi, vec')
             else (ci, vec)
@@ -36,7 +36,7 @@ push a (PQueue k vec) = PQueue (k + 1) vec'
     (i, vec)
 
 popMin :: (Ord a, Bounded a, VUM.Unbox a) => PQueue a -> Maybe (a, PQueue a)
-popMin (PQueue k vec) | k < 0     = Nothing
+popMin (PQueue k vec) | k <= 0    = Nothing
                       | otherwise = Just (uread 0 vec, PQueue (k - 1) vec')
  where
   vec' = let v = uswap (k - 1) 0 vec in v `seq` down 0 (uread 0 vec) v
@@ -57,4 +57,10 @@ popMin (PQueue k vec) | k < 0     = Nothing
     (i, vec)
 
 popMin' :: (Ord a, Bounded a, VUM.Unbox a) => PQueue a -> (a, PQueue a)
-popMin' pq = maybe (error "size < 0") id $ popMax pq
+popMin' pq = maybe (error "size < 0") id $ popMin pq
+
+{-
+instance Bounded Double where
+  maxBound = fromIntegral (maxBound :: Int)
+  minBound = fromIntegral (minBound :: Int)
+-}

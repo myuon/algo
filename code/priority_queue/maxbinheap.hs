@@ -28,7 +28,7 @@ push a (PQueue k vec) = PQueue (k + 1) vec'
   up i cv vec = (\(_, v) -> v) $ fix
     ( \f (ci, vec) ->
       let pi = (ci - 1) `div` 2
-          pv = uread pi vec
+          pv = if 0 < ci then uread pi vec else maxBound
       in  if 0 < ci && pv < cv
             then let vec' = uswap pi ci vec in vec' `seq` f (pi, vec')
             else (ci, vec)
@@ -36,7 +36,7 @@ push a (PQueue k vec) = PQueue (k + 1) vec'
     (i, vec)
 
 popMax :: (Ord a, Bounded a, VUM.Unbox a) => PQueue a -> Maybe (a, PQueue a)
-popMax (PQueue k vec) | k < 0     = Nothing
+popMax (PQueue k vec) | k <= 0    = Nothing
                       | otherwise = Just (uread 0 vec, PQueue (k - 1) vec')
  where
   vec' = let v = uswap (k - 1) 0 vec in v `seq` down 0 (uread 0 vec) v
