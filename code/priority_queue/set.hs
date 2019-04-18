@@ -1,15 +1,17 @@
+import qualified Data.Set as S
+
 -- Entry k v should be unique in a queue
 
 data Entry k v = Entry k v
   deriving (Eq, Ord, Show)
 
-newtype PQueue k v = PQueue { getQueue :: S.Set (Entry k v) }
+newtype PQueue a = PQueue { getQueue :: S.Set a }
 
-empty :: PQueue k v
+empty :: PQueue a
 empty = PQueue S.empty
 
-insert :: (Ord k, Ord v) => k -> v -> PQueue k v -> PQueue k v
-insert k v (PQueue set) = PQueue $ S.insert (Entry k v) set
+insert :: (Ord a) => a -> PQueue a -> PQueue a
+insert a (PQueue set) = PQueue $ S.insert a set
 
-popMax :: PQueue k v -> Maybe (Entry k v, PQueue k v)
+popMax :: PQueue a -> Maybe (a, PQueue a)
 popMax (PQueue set) = fmap (second PQueue) $ S.maxView set
