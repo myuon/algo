@@ -19,6 +19,22 @@ library
   default-extensions:
     BangPatterns
 
+benchmark benchmarks
+  type: exitcode-stdio-1.0
+  build-depends:
+    base ^>=4.12.0.0,
+    bytestring,
+    code,
+    deepseq,
+    gauge,
+    random,
+    vector,
+  main-is:             Main.hs
+  hs-source-dirs:      benchmark
+  default-language:    Haskell2010
+  default-extensions:
+    BangPatterns
+
 test-suite tests
   type: exitcode-stdio-1.0
   main-is: Driver.hs
