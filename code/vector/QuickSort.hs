@@ -1,6 +1,7 @@
 module QuickSort where
 
 import Control.Monad
+import Control.Monad.Fix
 import Data.Foldable
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
@@ -14,29 +15,53 @@ quicksortUM_ !vec = go 0 (VUM.length vec - 1)
   go !low !high
     | low >= high = return ()
     | otherwise = do
-      pi <- partition low high
+      (low', high') <- partition low high
 
-      go low      (pi - 1)
-      go (pi + 1) high
+      go low         (low' - 1)
+      go (high' + 1) high
 
-  partition :: Int -> Int -> IO Int
+  partition :: Int -> Int -> IO (Int, Int)
   partition !low !high = do
     let n = high - low
-    !pivot <- VUM.read vec high
+    !pivot <- do
+      !x <- VUM.read vec low
+      !y <- VUM.read vec ((low + high) `div` 2)
+      !z <- VUM.read vec high
+      return $ medianOf x y z
 
-    i      <- foldlM
-      ( \(!i) (!j) -> do
-        !aj <- VUM.read vec j
-        if aj <= pivot
-          then VUM.swap vec (i + 1) j >> return (i + 1)
-          else return i
+    fix
+      ( \(!f) (!low, !high) -> if low > high
+        then return (low, high)
+        else do
+          low' <- fix
+            ( \(!g) (!j) ->
+              ( \inc -> if inc
+                  then (if j < high then g else return) (j + 1)
+                  else return j
+                )
+                =<< (< pivot)
+                <$> VUM.read vec j
+            )
+            low
+          high' <- fix
+            ( \(!g) (!j) ->
+              ( \inc -> if inc
+                  then (if j > low then g else return) (j - 1)
+                  else return j
+                )
+                =<< (pivot <)
+                <$> VUM.read vec j
+            )
+            high
+
+          if low' >= high'
+            then return (low', high')
+            else VUM.swap vec low' high' >> f (low' + 1, high' - 1)
       )
-      (low - 1)
-      [low .. high - 1]
+      (low, high)
 
-    VUM.swap vec (i + 1) high
-
-    return $ i + 1
+  dropWhileM f []     = return []
+  dropWhileM f (x:xs) = f x >>= \b -> if b then dropWhileM f xs else return xs
 
   medianOf !x !y !z | z < y     = medianOf x z y
                     | y < x     = medianOf y x z
