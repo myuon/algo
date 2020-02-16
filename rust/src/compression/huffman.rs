@@ -1,3 +1,4 @@
+use bitvec::prelude::*;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
@@ -8,31 +9,52 @@ pub enum HuffmanTree<T, W> {
     Node(W, Box<HuffmanTree<T, W>>, Box<HuffmanTree<T, W>>),
 }
 
-pub struct HuffmanCode<T>(HashMap<T, u32>, HashMap<u32, T>);
+pub struct HuffmanCode<T>(HashMap<T, (u64, u8)>, HashMap<(u64, u8), T>);
 
 impl<T: Eq + Hash + Clone> HuffmanCode<T> {
-    pub fn new(code: HashMap<T, u32>) -> Self {
+    pub fn new(code: HashMap<T, (u64, u8)>) -> Self {
         HuffmanCode(
             code.clone(),
             code.into_iter().map(|(k, v)| (v, k)).collect(),
         )
     }
 
-    pub fn encode(&self, vec: &Vec<T>) -> Vec<u32> {
-        vec.iter()
-            .map(move |t| self.0.get(t).unwrap())
-            .cloned()
-            .collect()
+    pub fn encode(&self, vec: &Vec<T>) -> Vec<u8> {
+        let mut writer = BitVec::<Msb0, u8>::new();
+        for t in vec.iter() {
+            let b = self.0[t];
+            for i in (0..b.1).rev() {
+                writer.push(b.0 & (1 << i) != 0);
+            }
+        }
+
+        writer.as_slice().to_vec()
     }
 
-    pub fn decode(&self, vec: &Vec<u32>) -> Vec<T> {
-        vec.iter()
-            .map(move |t| self.1.get(t).unwrap())
-            .cloned()
-            .collect()
+    pub fn decode(&self, vec: &Vec<u8>, length: usize) -> Vec<T> {
+        let bitvec = BitVec::<Msb0, u8>::from_slice(&vec[..]);
+        let mut decoded = Vec::new();
+
+        let mut current = 0;
+        let mut big_size = 0;
+        for b in &bitvec {
+            current = current * 2 + if *b { 1 } else { 0 };
+            big_size += 1;
+            if let Some(v) = self.1.get(&(current, big_size)) {
+                decoded.push(v.clone());
+                current = 0;
+                big_size = 0;
+            }
+
+            if decoded.len() == length {
+                break;
+            }
+        }
+
+        decoded
     }
 
-    pub fn encode_from(v: Vec<T>) -> (Self, Vec<u32>) {
+    pub fn encode_from(v: Vec<T>) -> (Self, Vec<u8>) {
         let mut h = HashMap::new();
         for t in &v {
             if !h.contains_key(t) {
@@ -97,21 +119,21 @@ impl<T: Eq + Hash + Clone, W: Eq + Ord + Copy + std::ops::Add<Output = W>> Huffm
 
     pub fn into_code(self) -> HuffmanCode<T> {
         let mut result = HashMap::new();
-        self.into_code_rec(0, &mut result);
+        self.into_code_rec(0, 0, &mut result);
 
         HuffmanCode::new(result)
     }
 
-    fn into_code_rec(self, code: u32, acc: &mut HashMap<T, u32>) {
+    fn into_code_rec(self, code: u64, depth: u8, acc: &mut HashMap<T, (u64, u8)>) {
         use HuffmanTree::*;
 
         match self {
             Leaf(_, t) => {
-                acc.insert(t, code);
+                acc.insert(t, (code, depth));
             }
             Node(_, t1, t2) => {
-                t1.into_code_rec(code * 2, acc);
-                t2.into_code_rec(code * 2 + 1, acc);
+                t1.into_code_rec(code * 2, depth + 1, acc);
+                t2.into_code_rec(code * 2 + 1, depth + 1, acc);
             }
         }
     }
@@ -160,12 +182,12 @@ fn huffman_tree() {
     assert_eq!(
         htree.into_code().0,
         vec![
-            ("f", 0b0),
-            ("c", 0b100),
-            ("d", 0b101),
-            ("a", 0b1100),
-            ("b", 0b1101),
-            ("e", 0b111)
+            ("f", (0b0, 1)),
+            ("c", (0b100, 3)),
+            ("d", (0b101, 3)),
+            ("a", (0b1100, 4)),
+            ("b", (0b1101, 4)),
+            ("e", (0b111, 3))
         ]
         .into_iter()
         .collect()
@@ -174,12 +196,20 @@ fn huffman_tree() {
 
 #[test]
 fn huffman_coding() {
-    let plain = "DAEBCBACBBBC".chars().collect::<Vec<_>>();
+    let plain = "DABCBACBBBC".chars().collect::<Vec<_>>();
     let (hcode, c) = HuffmanCode::encode_from(plain.clone());
 
-    assert_eq!(hcode.decode(&c), plain);
     assert_eq!(
-        c,
-        vec![0b1110, 0b110, 0b1111, 0b0, 0b10, 0b0, 0b110, 0b10, 0b0, 0b0, 0b0, 0b10]
+        hcode.0,
+        vec![
+            ('A', (0b111, 3)),
+            ('B', (0b0, 1)),
+            ('C', (0b10, 2)),
+            ('D', (0b110, 3)),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>()
     );
+    assert_eq!(c, vec![0b11011101, 0b00111100, 0b00100000]);
+    assert_eq!(hcode.decode(&c, plain.len()), plain);
 }
