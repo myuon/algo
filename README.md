@@ -1,2 +1,2 @@
-# Verified Algorithms
+# Various Algorithms
 
