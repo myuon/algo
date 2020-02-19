@@ -101,8 +101,8 @@ impl SearchResult {
         bv.as_slice().to_vec()
     }
 
-    fn from_vec(v: Vec<u8>) -> Self {
-        let bv = BitVec::<Msb0, u8>::from_slice(&v);
+    fn from_u8(v: u8) -> Self {
+        let bv = BitVec::<Msb0, u8>::from_slice(&[v]);
 
         if *bv.get(0).unwrap() {
             let mut a = bitvec![Msb0, u8; 0; 8];
@@ -135,10 +135,10 @@ impl SearchResult {
 #[test]
 fn search_result_from_to() {
     let original = SearchResult::Found(10, 3);
-    assert_eq!(original, SearchResult::from_vec(original.to_vec()));
+    assert_eq!(original, SearchResult::from_u8(original.to_vec()[0]));
 
     let original = SearchResult::NotFound(100);
-    assert_eq!(original, SearchResult::from_vec(original.to_vec()));
+    assert_eq!(original, SearchResult::from_u8(original.to_vec()[0]));
 }
 
 pub struct Lzss {
@@ -166,6 +166,27 @@ impl Lzss {
             .into_iter()
             .flat_map(|r| r.to_vec())
             .collect()
+    }
+
+    pub fn decode(&self, input: Vec<u8>) -> Vec<u8> {
+        let mut decoded = Vec::new();
+        let results = input.into_iter().map(|i| SearchResult::from_u8(i));
+
+        for r in results {
+            use SearchResult::*;
+
+            match r {
+                NotFound(k) => {
+                    decoded.push(k);
+                }
+                Found(k, t) => {
+                    let mut s = decoded[decoded.len() - k..decoded.len() - k + t].to_vec();
+                    decoded.append(&mut s);
+                }
+            }
+        }
+
+        decoded
     }
 
     pub fn search_results(&self, input: &mut impl Read) -> Vec<SearchResult> {
@@ -197,7 +218,7 @@ impl Lzss {
 }
 
 #[test]
-fn lzss_search_results() {
+fn test_lzss_search_results() {
     use std::io::Cursor;
 
     let lzss = Lzss::default();
@@ -215,13 +236,24 @@ fn lzss_search_results() {
             SearchResult::Found(4, 1)
         ]
     );
+}
 
+#[test]
+fn test_lzss() {
+    use std::io::Cursor;
+
+    let lzss = Lzss::default();
     let mut input = Cursor::new("ABBABCAAB");
     assert_eq!(
-        lzss.encode(&mut input),
+        lzss.encode(&mut input.clone()),
         vec![
             0b01000001, 0b01000010, 0b10001001, 0b10011010, 0b01000011, 0b10011001, 0b10001001,
             0b10100001
         ]
+    );
+
+    assert_eq!(
+        String::from_utf8(lzss.decode(lzss.encode(&mut input.clone()))).unwrap(),
+        "ABBABCAAB"
     );
 }
