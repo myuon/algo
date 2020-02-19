@@ -100,6 +100,45 @@ impl SearchResult {
 
         bv.as_slice().to_vec()
     }
+
+    fn from_vec(v: Vec<u8>) -> Self {
+        let bv = BitVec::<Msb0, u8>::from_slice(&v);
+
+        if *bv.get(0).unwrap() {
+            let mut a = bitvec![Msb0, u8; 0; 8];
+            *a.get_mut(4).unwrap() = *bv.get(1).unwrap();
+            *a.get_mut(5).unwrap() = *bv.get(2).unwrap();
+            *a.get_mut(6).unwrap() = *bv.get(3).unwrap();
+            *a.get_mut(7).unwrap() = *bv.get(4).unwrap();
+
+            let mut b = bitvec![Msb0, u8; 0; 8];
+            *b.get_mut(5).unwrap() = *bv.get(5).unwrap();
+            *b.get_mut(6).unwrap() = *bv.get(6).unwrap();
+            *b.get_mut(7).unwrap() = *bv.get(7).unwrap();
+
+            SearchResult::Found(a.as_slice()[0] as usize, b.as_slice()[0] as usize)
+        } else {
+            let mut c = bitvec![Msb0, u8; 0; 8];
+            *c.get_mut(1).unwrap() = *bv.get(1).unwrap();
+            *c.get_mut(2).unwrap() = *bv.get(2).unwrap();
+            *c.get_mut(3).unwrap() = *bv.get(3).unwrap();
+            *c.get_mut(4).unwrap() = *bv.get(4).unwrap();
+            *c.get_mut(5).unwrap() = *bv.get(5).unwrap();
+            *c.get_mut(6).unwrap() = *bv.get(6).unwrap();
+            *c.get_mut(7).unwrap() = *bv.get(7).unwrap();
+
+            SearchResult::NotFound(c.as_slice()[0])
+        }
+    }
+}
+
+#[test]
+fn search_result_from_to() {
+    let original = SearchResult::Found(10, 3);
+    assert_eq!(original, SearchResult::from_vec(original.to_vec()));
+
+    let original = SearchResult::NotFound(100);
+    assert_eq!(original, SearchResult::from_vec(original.to_vec()));
 }
 
 pub struct Lzss {
@@ -174,6 +213,15 @@ fn lzss_search_results() {
             SearchResult::Found(3, 1),
             SearchResult::Found(1, 1),
             SearchResult::Found(4, 1)
+        ]
+    );
+
+    let mut input = Cursor::new("ABBABCAAB");
+    assert_eq!(
+        lzss.encode(&mut input),
+        vec![
+            0b01000001, 0b01000010, 0b10001001, 0b10011010, 0b01000011, 0b10011001, 0b10001001,
+            0b10100001
         ]
     );
 }
