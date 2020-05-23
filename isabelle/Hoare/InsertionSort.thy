@@ -11,6 +11,14 @@ lemma swapAt_same: "i < length xs \<Longrightarrow> swapAt i i xs = xs"
   apply simp
   done
 
+lemma swapAt_nth: "\<And>k. i < length xs \<Longrightarrow> j < length xs \<Longrightarrow> swapAt i j xs ! k = (if k = i then xs ! j else if k = j then xs ! i else xs ! k)"
+  apply (induct xs)
+  apply auto
+  apply (metis list_update.simps(2) list_update_id)
+  apply (metis length_Cons length_list_update list_update.simps(2) nth_list_update_eq)
+  apply (metis length_Cons list_update.simps(2) nth_list_update_eq)
+  by (metis list_update.simps(2) nth_list_update_neq)
+
 inductive array where
   "array H p 0 []"
 | "H p = Some a \<Longrightarrow> array H (p+1) k as \<Longrightarrow> array H p (Suc k) (a#as)"
@@ -80,11 +88,46 @@ proof-
     using \<open>array H p n xs \<Longrightarrow> \<exists>zs. array (H(x \<mapsto> y)) p n zs \<and> (\<forall>i<n. if x = p + i then zs ! i = y else zs ! i = xs ! i)\<close> by blast
 qed
 
+lemma array_list_at:
+  "array H p n xs \<Longrightarrow> (\<And>k. k < n \<Longrightarrow> Some (xs ! k) = H (p + k))"
+  apply (induct rule: array.induct)
+  apply auto
+  using less_Suc_eq_0_disj by auto
+
 lemma array_swap_at:
   assumes "array H p n xs" "i < length xs" "j < length xs"
   shows "array (H(p + i \<mapsto> the (H (p + j)), p + j \<mapsto> the (H (p + i)))) p n (swapAt i j xs)"
 proof-
-  obtain zs where "array (H(p + i \<mapsto> the (H (p + j)), p + j \<mapsto> the (H (p + i)))) p n zs"
+  obtain ys where
+    ys_array: "array (H(p + i \<mapsto> the (H (p + j)))) p n ys"
+    and "\<And>k. k < n \<Longrightarrow> if p + i = p + k then ys ! k = the (H (p + j)) else ys ! k = xs ! k"
+    apply (rule array_exists_under_heap_modification [OF assms(1), of "p + i" "the (H (p + j))"])
+    by blast
+  obtain zs where
+    "array (H(p + i \<mapsto> the (H (p + j)), p + j \<mapsto> the (H (p + i)))) p n zs"
+    "\<And>k. k < n \<Longrightarrow> if p + j = p + k then zs ! k = the (H (p + i)) else zs ! k = ys ! k"
+    apply (rule array_exists_under_heap_modification [OF ys_array, of "p + j" "the (H (p + i))"])
+    by blast
+
+  have "\<And>k. k < n \<Longrightarrow> if k = i then zs ! k = the (H (p + j)) else if k = j then zs ! k = the (H (p + i)) else zs ! k = xs ! k"
+    by (simp add: \<open>\<And>k. k < n \<Longrightarrow> if p + i = p + k then ys ! k = the (H (p + j)) else ys ! k = xs ! k\<close> \<open>\<And>k. k < n \<Longrightarrow> if p + j = p + k then zs ! k = the (H (p + i)) else zs ! k = ys ! k\<close>)
+  have "xs ! j = the (H (p + j))" "xs ! i = the (H (p + i))"
+    apply (metis array_length array_list_at assms(1) assms(3) option.sel)
+    by (metis array_length array_list_at assms(1) assms(2) option.sel)
+  have "\<And>k. k < n \<Longrightarrow> zs ! k = (if k = i then xs ! j else if k = j then xs ! i else xs ! k)"
+    by (simp add: \<open>\<And>k. k < n \<Longrightarrow> if k = i then zs ! k = the (H (p + j)) else if k = j then zs ! k = the (H (p + i)) else zs ! k = xs ! k\<close> \<open>xs ! i = the (H (p + i))\<close> \<open>xs ! j = the (H (p + j))\<close>)
+  have "\<And>k. k < n \<Longrightarrow> swapAt i j xs ! k = (if k = i then xs ! j else if k = j then xs ! i else xs ! k)"
+    using assms(2) assms(3) swapAt_nth by blast
+  have "\<And>k. k < n \<Longrightarrow> zs ! k = swapAt i j xs ! k"
+    using \<open>\<And>k. k < n \<Longrightarrow> swapAt i j xs ! k = (if k = i then xs ! j else if k = j then xs ! i else xs ! k)\<close> \<open>\<And>k. k < n \<Longrightarrow> zs ! k = (if k = i then xs ! j else if k = j then xs ! i else xs ! k)\<close> by auto
+  have "length zs = n"
+    using \<open>array (H(p + i \<mapsto> the (H (p + j)), p + j \<mapsto> the (H (p + i)))) p n zs\<close> array_length by blast
+  have "zs = swapAt i j xs"
+    by (metis \<open>\<And>k. k < n \<Longrightarrow> zs ! k = swapAt i j xs ! k\<close> \<open>length zs = n\<close> array_length assms(1) length_list_update list_eq_iff_nth_eq swapAt.simps)
+
+  show ?thesis
+    using \<open>array (H(p + i \<mapsto> the (H (p + j)), p + j \<mapsto> the (H (p + i)))) p n zs\<close> \<open>zs = swapAt i j xs\<close> by blast
+qed
 
 primrec count where
   "count a [] = 0"
